@@ -1,0 +1,15 @@
+.data/
+node_modules/
+*.log
+.voice-cache/
+.env
+.env.*
+!.env.example
+sites/
+artifacts/
+release/
+dist/
+scripts/redesign.py
+scripts/apply-role-ui.py
+scripts/create-roles.py
+scripts/apply-role-ui.py

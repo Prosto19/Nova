@@ -1,0 +1,27 @@
+import {test,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,rm,readFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+const dir=await mkdtemp(join(tmpdir(),'nova-test-'));process.env.NOVA_DATA_DIR=dir;
+const {server}=await import('../server.mjs');
+await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
+after(async()=>{await new Promise(r=>server.close(r));await rm(dir,{recursive:true,force:true});});
+const post=(path,data,cookie='',origin=base)=>fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json',Origin:origin,Cookie:cookie},body:JSON.stringify(data)});
+test('authentication, isolated sessions, logout and origin protection',async()=>{
+ assert.equal((await fetch(base)).status,200);
+ assert.deepEqual(await (await fetch(base+'/api/session')).json(),{user:null});
+ assert.equal((await post('/api/login',{login:'demo_student',password:'wrong'})).status,401);
+ assert.equal((await post('/api/login',{login:'demo_student',password:'Nova2026!'},'','https://other.example')).status,403);
+ const login=await post('/api/login',{login:'demo_student',password:'Nova2026!',role:'dean'});assert.equal(login.status,200);
+ const set=login.headers.get('set-cookie');assert.match(set,/HttpOnly/);assert.match(set,/SameSite=Strict/);const cookie=set.split(';')[0];
+ const user=(await login.json()).user;assert.equal(user.login,'demo_student');assert.equal(user.role,'Студент');assert.equal(user.hash,undefined);
+ const second=await post('/api/login',{login:'demo_student2',password:'Nova2026!'});const cookie2=second.headers.get('set-cookie').split(';')[0];
+ const current=async c=>(await (await fetch(base+'/api/session',{headers:{Cookie:c}})).json()).user;
+ assert.equal((await current(cookie)).login,'demo_student');assert.equal((await current(cookie2)).login,'demo_student2');
+ await post('/api/logout',{},cookie);assert.equal(await current(cookie),null);assert.equal((await current(cookie2)).login,'demo_student2');
+ assert.equal((await fetch(base+'/.data/users.json')).status,404);
+ assert.ok(!(await readFile(dir+'/users.json','utf8')).includes('Nova2026!'));
+ for(let i=0;i<10;i++)assert.equal((await post('/api/login',{login:'none',password:'bad'})).status,401);
+ assert.equal((await post('/api/login',{login:'none',password:'bad'})).status,429);
+});
