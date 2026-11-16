@@ -12,4 +12,3 @@ dist/
 scripts/redesign.py
 scripts/apply-role-ui.py
 scripts/create-roles.py
-scripts/apply-role-ui.py

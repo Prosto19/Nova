@@ -17,7 +17,7 @@ test('each role exposes only its core tools and all tour targets exist',()=>{
 test('all role tour clips are packaged and captions match their spoken text',async()=>{
  for(const role of Object.values(roles))for(const step of role.tour){
   if(step.speech)assert.equal(step.speech.replaceAll('+',''),step.text);
-  const wav=await readFile(new URL(`../sites/nova-mobile/dist/audio/${step.audio}.wav`,import.meta.url));
+  const wav=await readFile(new URL(`../public/audio/${step.audio}.wav`,import.meta.url));
   assert.equal(wav.toString('ascii',0,4),'RIFF');assert.ok(wav.length>48000);
  }
 });

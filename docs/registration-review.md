@@ -28,7 +28,7 @@ OCR, проверка подлинности, серверная активац�
 
 ## Файлы
 
-Основные: `public/experience.js`, `public/experience.css`, `public/mobile.js`, `public/mobile.html`, `public/mobile.css`. Публичная сборка: `build-demo.mjs`, `public/demo-app.js`, `sites/nova-mobile/dist`. Тесты: `tests/auth.test.mjs`, `tests/registration-ui.test.mjs`. Контракты: `docs/registration-contract.md`. В локальном `server.mjs` только поддержка blob-предпросмотра в CSP; новая логика авторизации не добавлена.
+Основные: `public/experience.js`, `public/experience.css`, `public/mobile.js`, `public/mobile.html`, `public/mobile.css`. Тесты: `tests/auth.test.mjs`, `tests/registration-ui.test.mjs`. Контракты: `docs/registration-contract.md`. В локальном `server.mjs` только поддержка blob-предпросмотра в CSP; новая логика авторизации не добавлена.
 
 ## Публикация
 
