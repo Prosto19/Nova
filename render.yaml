@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: nova-dean-demo
+    runtime: node
+    plan: free
+    buildCommand: node --version
+    startCommand: node server.mjs
+    autoDeployTrigger: off
+    envVars:
+      - key: NODE_VERSION
+        value: 24.22.3

@@ -9,6 +9,9 @@ import {createRoutes,ApiError} from './backend/routes.mjs';
 import {createOllama} from './backend/ollama.mjs';
 try{loadEnvFile(fileURLToPath(new URL('.env',import.meta.url)));}catch(e){if(e.code!=='ENOENT')throw e;}
 const root=fileURLToPath(new URL('.',import.meta.url));
+const hostedOrigin=process.env.RENDER_EXTERNAL_URL ? new URL(process.env.RENDER_EXTERNAL_URL) : null;
+if(hostedOrigin && hostedOrigin.protocol!=='https:')throw Error('Hosted NOVA requires HTTPS');
+const secureCookie=hostedOrigin?'; Secure':'';
 export const store=createStore(process.env.NOVA_DATA_DIR||root+'.data');
 const routes=createRoutes(store),ollama=createOllama(store,routes.context),derive=promisify(scrypt);
 const sessions=new Map(),attempts=new Map();const ttl=8*60*60*1000;
@@ -19,11 +22,11 @@ async function body(req){let size=0;const chunks=[];for await(const c of req){si
 export const server=http.createServer(async(req,res)=>{try{
  res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
- if(!/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host||''))return reply(res,403,{error:'Только локальный доступ.'});
+ if(hostedOrigin ? req.headers.host!==hostedOrigin.host : !/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host||''))return reply(res,403,{error:'Только локальный доступ.'});
  const url=new URL(req.url,'http://localhost'),path=url.pathname;
  if(!['GET','POST'].includes(req.method))return reply(res,405,{error:'Метод недоступен.'});
  if(req.method==='POST'){
-  if(req.headers.origin!==`http://${req.headers.host}`)return reply(res,403,{error:'Недопустимый источник запроса.'});
+  if(req.headers.origin!==(hostedOrigin?.origin||`http://${req.headers.host}`))return reply(res,403,{error:'Недопустимый источник запроса.'});
   if(req.headers['content-type']?.split(';')[0]!=='application/json')return reply(res,415,{error:'Ожидается JSON.'});
  }
  const sid=cookie(req);let session=sessions.get(sid);if(session&&session.expires<Date.now()){sessions.delete(sid);session=undefined;}
@@ -34,9 +37,9 @@ export const server=http.createServer(async(req,res)=>{try{
   if(typeof input?.login!=='string'||typeof input.password!=='string'||input.login.length>100||input.password.length>256)return reply(res,400,{error:'Проверьте логин и пароль.'});a.count++;
   const u=store.one('SELECT * FROM users WHERE login=?',input.login.trim().toLowerCase());const salt=u?.salt||'nova-missing-user-salt';const hash=await derive(input.password,salt,64);
   if(!u||!timingSafeEqual(hash,Buffer.from(u.hash,'hex')))return reply(res,401,{error:'Неверный логин или пароль.'});
-  attempts.delete(ip);if(sid)sessions.delete(sid);const token=randomBytes(32).toString('hex');sessions.set(token,{user:u,expires:now+ttl});res.setHeader('Set-Cookie',`nova_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${ttl/1000}`);return reply(res,200,{user:publicUser(u)});
+  attempts.delete(ip);if(sid)sessions.delete(sid);const token=randomBytes(32).toString('hex');sessions.set(token,{user:u,expires:now+ttl});res.setHeader('Set-Cookie',`nova_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${ttl/1000}${secureCookie}`);return reply(res,200,{user:publicUser(u)});
  }
- if(path==='/api/logout'&&req.method==='POST'){sessions.delete(sid);res.setHeader('Set-Cookie','nova_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');return reply(res,200,{ok:true});}
+ if(path==='/api/logout'&&req.method==='POST'){sessions.delete(sid);res.setHeader('Set-Cookie','nova_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'+secureCookie);return reply(res,200,{ok:true});}
  if(path.startsWith('/api/')){
   if(!session)return reply(res,401,{error:'Войдите в аккаунт.'});const b=req.method==='POST'?await body(req):{};if(b===null||Array.isArray(b)||typeof b!=='object')throw new ApiError(400,'Ожидается объект.');
   if(path==='/api/llm/status'&&req.method==='GET')return reply(res,200,await ollama.status());
@@ -56,4 +59,4 @@ export const server=http.createServer(async(req,res)=>{try{
  }catch(e){if(!res.headersSent)reply(res,e instanceof ApiError?e.status:500,{error:e instanceof ApiError?e.message:'Ошибка сервера. Повторите запрос.'});else res.end();if(!(e instanceof ApiError))console.error(e.message);}
 });
 server.on('close',()=>{clearInterval(cleanup);store.close();});
-if(process.argv[1]===fileURLToPath(import.meta.url))server.listen(Number(process.env.PORT||3000),'127.0.0.1',()=>console.log('NOVA: http://localhost:'+(process.env.PORT||3000)));
+if(process.argv[1]===fileURLToPath(import.meta.url))server.listen(Number(process.env.PORT||3000),hostedOrigin?'0.0.0.0':'127.0.0.1',()=>console.log('NOVA: http://localhost:'+(process.env.PORT||3000)));
