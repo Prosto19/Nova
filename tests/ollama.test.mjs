@@ -1,0 +1,7 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import http from 'node:http';import {createOllama} from '../backend/ollama.mjs';
+test('Ollama receives server-scoped context and no write tools; unavailable models report errors',async()=>{
+ let payload;const fake=http.createServer(async(req,res)=>{let body='';for await(const c of req)body+=c;payload=JSON.parse(body);res.setHeader('Content-Type','application/json');res.end(JSON.stringify({message:{content:'Ваше занятие в 09:00.'}}));});await new Promise(r=>fake.listen(0,'127.0.0.1',r));
+ const old=process.env.OLLAMA_BASE_URL;process.env.OLLAMA_BASE_URL=`http://127.0.0.1:${fake.address().port}`;
+ const saved=[];const s={all:()=>[],run:(...x)=>saved.push(x),transaction:fn=>fn()};const api=createOllama(s,u=>({login:u.login,ownOnly:true}));
+ try{const result=await api.chat({login:'student001'},'Что сегодня?');assert.match(result.answer,/09:00/);assert.equal(payload.tools,undefined);assert.match(payload.messages[0].content,/student001/);assert.match(payload.messages[0].content,/только чтение/);assert.equal(saved.length,2);await new Promise(r=>fake.close(r));assert.equal((await api.status()).ready,false);await assert.rejects(api.chat({login:'student001'},'Привет'),e=>e.status===503);}finally{if(fake.listening)await new Promise(r=>fake.close(r));if(old===undefined)delete process.env.OLLAMA_BASE_URL;else process.env.OLLAMA_BASE_URL=old;}
+});

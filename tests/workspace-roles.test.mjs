@@ -6,10 +6,10 @@ const context={};vm.runInNewContext(await readFile(new URL('../public/roles.js',
 const roles=context.NOVA_ROLES;
 test('each role exposes only its core tools and all tour targets exist',()=>{
  assert.deepEqual(Array.from(roles.teacher.sections,x=>x[0]),['schedule','notifications','exams']);
- assert.deepEqual(Array.from(roles.dean.sections,x=>x[0]),['requests','documents','announcements']);
+ assert.deepEqual(Array.from(roles.dean.sections,x=>x[0]),['students','academic','documents','communications','admissions','analytics','community']);
  assert.ok(roles.student.sections.some(x=>x[0]==='grades'));
  for(const role of Object.values(roles)){
-  const ids=new Set(['greeting','chat','profile-card',...role.sections.map(x=>x[0])]);
+  const ids=new Set(['greeting','chat','profile-card','manual','suggestions','events',...role.sections.map(x=>x[0])]);
   for(const step of role.tour)assert.ok(ids.has(step.target),step.target);
   for(const card of role.cards)assert.ok(role.sections.some(x=>x[0]===card[0]));
  }
