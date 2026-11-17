@@ -42,8 +42,8 @@ export const server=http.createServer(async(req,res)=>{try{
   if(path==='/api/llm/status'&&req.method==='GET')return reply(res,200,await ollama.status());
   if(path==='/api/chat'&&req.method==='POST'){
    const direct=routes.readAnswer(session.user,b.message);
-   if(direct){store.transaction(()=>{store.run('INSERT INTO chats(owner,role,body) VALUES(?,?,?)',session.user.login,'user',b.message);store.run('INSERT INTO chats(owner,role,body) VALUES(?,?,?)',session.user.login,'assistant',direct.answer+'\n'+direct.schedule.map(l=>`${l.day} ${l.start}–${l.end} · ${l.subject} · ${l.group_id} · ${l.room}`).join('\n'));});return reply(res,200,direct);}
-   return reply(res,200,await ollama.chat(session.user,b.message));
+   if(direct){store.transaction(()=>{store.run('INSERT INTO chats(owner,role,body) VALUES(?,?,?)',session.user.login,'user',b.message);store.run('INSERT INTO chats(owner,role,body) VALUES(?,?,?)',session.user.login,'assistant',direct.answer+'\n'+(direct.schedule||[]).map(l=>`${l.day} ${l.start}–${l.end} · ${l.subject} · ${l.group_id} · ${l.room}`).join('\n'));});return reply(res,200,direct);}
+   const controller=new AbortController();const cancel=()=>{if(!res.writableEnded)controller.abort();};res.once('close',cancel);try{return reply(res,200,await ollama.chat(session.user,b.message,{signal:controller.signal}));}finally{res.removeListener('close',cancel);}
   }
   if(path==='/api/chat'&&req.method==='GET')return reply(res,200,{messages:store.all('SELECT role,body,created FROM chats WHERE owner=? ORDER BY id DESC LIMIT 40',session.user.login).reverse()});
   const result=await routes.handle(req.method,path,session.user,b,url);if(result!==undefined)return reply(res,200,result);return reply(res,404,{error:'Не найдено.'});

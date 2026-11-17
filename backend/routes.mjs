@@ -1,3 +1,4 @@
+import {createDeanRoutes} from './dean.mjs';
 import {publicUser} from './store.mjs';
 export class ApiError extends Error{constructor(status,message){super(message);this.status=status;}}
 const fail=(code,message)=>{throw new ApiError(code,message);};
@@ -7,7 +8,8 @@ const requireRole=(u,...roles)=>{if(!roles.includes(u.role))fail(403,'Недос
 const confirmed=b=>{if(b.confirm!==true)fail(400,'Сначала подтвердите действие.');};
 const version=(row,b)=>{if(!row)fail(404,'Запись не найдена.');if(row.version!==b.version)fail(409,'Данные уже изменились. Обновите раздел и повторите действие.');};
 export function createRoutes(s){
- function lessons(u){return u.role==='dean'?s.all('SELECT * FROM lessons ORDER BY day,start'):u.role==='teacher'?s.all('SELECT * FROM lessons WHERE teacher=? ORDER BY day,start',u.login):s.all('SELECT * FROM lessons WHERE group_id=? ORDER BY day,start',u.group_id);}
+ const deanRoutes=createDeanRoutes(s);
+ function lessons(u){return s.all('SELECT l.*,p.name teacher_name FROM lessons l JOIN users p ON p.login=l.teacher '+(u.role==='dean'?'':u.role==='teacher'?'WHERE l.teacher=? ':'WHERE l.group_id=? ')+'ORDER BY l.day,l.start',...(u.role==='dean'?[]:[u.role==='teacher'?u.login:u.group_id]));}
  function requests(u){requireRole(u,'student','dean');return s.all('SELECT r.*,u.name FROM requests r JOIN users u ON u.login=r.student '+(u.role==='student'?'WHERE student=? ':'')+'ORDER BY r.id DESC',...(u.role==='student'?[u.login]:[]));}
  function grades(u){return s.all('SELECT g.*,u.name,u.group_id FROM grades g JOIN users u ON u.login=g.student '+(u.role==='student'?'WHERE student=?':u.role==='teacher'?'WHERE teacher=?':'')+' ORDER BY g.id',...(['student','teacher'].includes(u.role)?[u.login]:[]));}
  function appeals(u){return s.all('SELECT a.*,u.name FROM appeals a JOIN users u ON u.login=a.author '+(u.role==='dean'?'':'WHERE author=? ')+'ORDER BY a.id DESC',...(u.role==='dean'?[]:[u.login]));}
@@ -26,6 +28,16 @@ export function createRoutes(s){
  function readAnswer(u,message){
   if(typeof message!=='string'||message.length>2000||!message.trim())return null;
   const q=message.toLowerCase();
+  const guide=(answer,actions,extra={})=>({answer,source:'workflow',actions,...extra});
+  if(u.role==='dean'){
+   if(/обращ/.test(q)&&/сдел|созда|оформ|напиш|отправ|подготов/.test(q))return guide('Помогу создать служебное обращение. Выберите преподавателя или сотрудника, заполните тему и сообщение. Перед отправкой вы увидите предпросмотр. Без подтверждения ничего не отправляется.',[{id:'compose-staff',label:'Создать обращение здесь'}]);
+   if(/экзам|распис|занят/.test(q)&&/перен|измен|назнач/.test(q))return guide('Выберите событие и нажмите «Изменить» под его карточкой. Покажу календарь и свободные интервалы. Запрос получит преподаватель; расписание изменится после его согласования.',[],{schedule:lessons(u).filter(l=>!q.includes('экзам')||l.kind==='Экзамен')});
+   if(/заявлен|справк/.test(q))return guide('Заявления рассматриваются в «Документообороте». В карточке доступны текст, сведения студента, история и решение. Выберите заявку — подготовим изменение статуса.',[{id:'documents',label:'Открыть заявления'}],{requests:requests(u).slice(0,12)});
+   if(/объявлен/.test(q))return guide('В «Коммуникациях» выберите аудиторию, тему и текст объявления. Затем проверьте предпросмотр и подтвердите публикацию.',[{id:'communications',label:'Подготовить объявление'}]);
+   if(/аналит|статист/.test(q))return guide('Аналитика показывает студентов, задолженности, среднюю оценку и заявки. Доступны фильтры группы и курса; «Подробнее» выделяет нужную группу.',[{id:'analytics',label:'Открыть аналитику'}]);
+   if(/студент/.test(q)&&/покаж|най|дело|смотр/.test(q))return guide('Откройте «Студенты», найдите человека по имени или группе и нажмите «Открыть дело». В карточке есть учебные данные, оценки, заявления и история.',[{id:'students',label:'Найти студента'}]);
+   if(/помо|умеешь|возможност|куда|как работ|что мож|подска|вкладк/.test(q))return guide('Я помогу найти сведения и подготовить действия. Выберите задачу ниже. Всё можно сделать вручную через вкладки слева. Действия с данными требуют вашего подтверждения.',[{id:'compose-staff',label:'Создать обращение'},{id:'schedule',label:'Изменить экзамен'},{id:'documents',label:'Рассмотреть заявление'},{id:'students',label:'Карточка студента'},{id:'analytics',label:'Проверить показатели'}]);
+  }
   if(!/расписан|какие (?:пары|занятия)|мои (?:пары|занятия)/.test(q)||/перенес|измен|отмен|назнач/.test(q))return null;
   let date=q.match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0];
   if(!date&&/сегодня|завтра|на день/.test(q))date=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Moscow'}).format(new Date(Date.now()+(q.includes('завтра')?86400000:0)));
@@ -35,6 +47,7 @@ export function createRoutes(s){
  }
 
  async function handle(method,path,u,b,url){
+  const deanResult=deanRoutes(method,path,u,b,url);if(deanResult!==undefined)return deanResult;
   if(method==='GET'&&path==='/api/workspace')return {user:publicUser(u),groups:[...new Set(lessons(u).map(l=>l.group_id))],persistent:true};
   if(method==='GET'&&path==='/api/students'){
    requireRole(u,'dean','teacher');const rows=u.role==='dean'?s.all("SELECT login,name,group_id,course FROM users WHERE role='student' ORDER BY name"):s.all("SELECT login,name,group_id,course FROM users WHERE role='student' AND group_id IN (SELECT group_id FROM lessons WHERE teacher=?) ORDER BY name",u.login);

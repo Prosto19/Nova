@@ -18,8 +18,9 @@ export function createStore(dir){
  CREATE INDEX IF NOT EXISTS notification_owner ON notifications(recipient,id);
  CREATE INDEX IF NOT EXISTS request_owner ON requests(student,id);
  CREATE INDEX IF NOT EXISTS chat_owner ON chats(owner,id);
- PRAGMA user_version=1;`);
+ `);
  const all=(sql,...args)=>db.prepare(sql).all(...args),one=(sql,...args)=>db.prepare(sql).get(...args),run=(sql,...args)=>db.prepare(sql).run(...args);
+ if(one('PRAGMA user_version').user_version<1)db.exec('PRAGMA user_version=1');
  const transaction=fn=>{db.exec('BEGIN IMMEDIATE');try{const value=fn();db.exec('COMMIT');return value;}catch(e){db.exec('ROLLBACK');throw e;}};
  if(!one('SELECT login FROM users LIMIT 1'))transaction(()=>{
   const names=['Алексей','Иван','Михаил','Дмитрий','Артём','Никита','Павел','Максим','Роман','Олег'];const surnames=['Северин','Белов','Орлов','Соколов','Морозов','Волков','Леснов','Романов','Крылов','Зайцев'];
