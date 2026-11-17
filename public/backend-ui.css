@@ -31,3 +31,46 @@
  @keyframes nova-orbit{to{transform:rotate(360deg)}}
  @keyframes nova-answer-enter{from{opacity:.3;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
 }
+.portal-feed{margin:28px 0;text-align:left;color:#d9e5f5}.workspace-content .portal-feed header{display:flex;justify-content:space-between;align-items:center;margin:0;height:auto}.portal-feed h2{font-size:18px;font-weight:550}.portal-feed button{font:inherit;color:#a6cafa;background:transparent;border:0;cursor:pointer}.portal-stream{max-height:320px;overflow:auto;scrollbar-width:thin}.portal-stream details{border-bottom:1px solid #839fc426}.portal-stream summary{display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;padding:13px 4px;cursor:pointer}.portal-avatar{background:#1b3556;color:#bcd8ff;padding:8px 0;border-radius:12px;text-align:center;font-size:12px}.portal-stream strong,.portal-stream small{display:block}.portal-stream strong{font-size:14px;font-weight:500;margin-top:4px}.portal-stream time,.portal-stream small{font-size:11px;color:#94aac6}.portal-detail{padding:4px 16px 16px 52px}.portal-detail p{font-size:14px;margin:0 0 10px}.chat-started .portal-feed{display:none}@media(prefers-reduced-motion:no-preference){.portal-new{animation:nova-answer-enter .4s ease-out}}@media(max-width:650px){.portal-stream summary{grid-template-columns:32px 1fr}.portal-stream time{grid-column:2}}
+
+/* Quiet orbital light behind the workspace. */
+.workspace-cosmos {
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 64% 38% at 78% 12%, #203d782d, transparent 90%),
+    radial-gradient(ellipse 48% 43% at 56% 52%, #18376736, transparent);
+}
+.workspace-cosmos::after {
+  inset: -30% -20% 12% 8%;
+  transform: rotate(-16deg);
+  background:
+    radial-gradient(ellipse 67% 44% at 63% 19%, transparent 96%, #7baeff19 98%, #689aff09 100%, transparent 104%),
+    radial-gradient(circle at 73% 45%, #c1d9ff 0 1px, #619cff48 2px, transparent 5px),
+    radial-gradient(circle at 42% 23%, #c5dfff 0 1px, transparent 2px);
+  opacity: .68;
+}
+.portal-feed:not(.expanded) .portal-stream details:nth-child(n+4) { display: none; }
+.portal-more {
+  margin: 10px 0 0; padding: 6px 10px; background: transparent;
+  color: #b6cfff; border: 1px solid #88acde38; border-radius: 8px; cursor: pointer;
+}
+.portal-more:hover { background: #85aaff15; }
+.portal-more:focus-visible { outline: 2px solid #98c2ff; outline-offset: 2px; }
+.nova-workspace[data-connected="true"]:not([data-role="dean"]):not(.tour-active) .workspace-suggestions { display: none; }
+.nova-workspace[data-role="dean"]:not(.chat-started):not(.tour-active) .nova-quick-actions button:nth-child(3) { display: none; }
+.cal-tools,.cal-lesson{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cal-tools button[aria-pressed=true]{background:#234976;color:#ebf5ff;border-color:#72adf1}
+.cal-body h3,.cal-day h4{text-transform:capitalize}
+.cal-day{display:grid;grid-template-columns:minmax(65px,95px) 1fr;gap:12px;padding:12px 0;border-top:1px solid #94baff23}
+.cal-day h4{margin:0;color:#a6c9ff}.cal-body small{color:#b3c3d8}.cal-lesson{padding:10px 14px;background:#12223a;border-left:3px solid #64c6bf;border-radius:7px;margin-bottom:5px}
+.cal-lesson small,.cal-cell small{display:block}.cal-lesson time{font-variant-numeric:tabular-nums;color:#c8dcff}.cal-exam{border-color:#f1b46e}.cal-credit{border-color:#b699ea}
+.cal-month{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;text-align:center}
+.cal-month .cal-cell{padding:8px 1px;min-width:0;border-radius:6px}.cal-cell:disabled{opacity:.35}.cal-cell small{font-size:11px}
+.campus-chat{display:grid;grid-template-columns:minmax(155px,30%) minmax(0,1fr);gap:18px}
+.campus-directory,.campus-chat>section,.campus-feed article{padding:16px;border:1px solid #344965;border-radius:16px;background:#101f33}
+.campus-directory label,.campus-directory input,.campus-peers button{display:block;width:100%;box-sizing:border-box}
+.campus-directory input,.campus-chat textarea{background:#0c1729;color:#eef5ff;border:1px solid #455f82;border-radius:10px;padding:10px}
+.campus-peers{max-height:47vh;overflow:auto;margin-top:12px}.campus-peers button{text-align:left;margin:2px 0}.campus-peers [aria-pressed=true]{background:#24466b;color:white}
+.campus-thread{display:flex;flex-direction:column;gap:12px;min-height:165px;max-height:43vh;overflow:auto;padding:8px 0}.campus-thread article{align-self:flex-start;background:#20344a;border-radius:14px 14px 14px 4px;padding:10px 14px;max-width:85%}.campus-thread .mine{align-self:flex-end;background:#253e69;border-radius:14px 14px 4px 14px}.campus-thread small,.campus-feed small{color:#bdd1e9}.campus-thread p,.campus-feed p{white-space:pre-wrap;overflow-wrap:anywhere;margin:5px 0}
+.campus-chat form{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}.campus-chat textarea{flex:1;min-width:100px}.campus-feed{display:grid;gap:16px}.campus-feed article{background:linear-gradient(112deg,#162c44,#101c30);border-top:2px solid #5098af}.workspace-content .campus-feed header{display:flex;align-items:center;justify-content:flex-start;gap:12px;margin:0;height:auto}.campus-feed small{display:block}.campus-avatar{background:#255267;color:#e1fcff;border-radius:50%;padding:10px 14px}.campus-feed h3{margin:16px 0 8px}
+@media(max-width:700px){.campus-chat{grid-template-columns:1fr}.campus-peers{max-height:125px}}

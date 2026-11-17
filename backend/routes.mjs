@@ -1,3 +1,4 @@
+import {seedPortal,portalFeed} from './portal.mjs';
 import {createRoleAgent,studentCapabilities,teacherCapabilities} from './role-agent.mjs';
 import {createDeanAgent,deanCapabilities} from './agent.mjs';
 import {createDeanRoutes} from './dean.mjs';
@@ -11,11 +12,19 @@ const confirmed=b=>{if(b.confirm!==true)fail(400,'Сначала подтвер�
 const version=(row,b)=>{if(!row)fail(404,'Запись не найдена.');if(row.version!==b.version)fail(409,'Данные уже изменились. Обновите раздел и повторите действие.');};
 export function createRoutes(s){
  const deanRoutes=createDeanRoutes(s);
+ s.db.exec('CREATE TABLE IF NOT EXISTS direct_messages(id INTEGER PRIMARY KEY,author TEXT NOT NULL REFERENCES users(login),recipient TEXT NOT NULL REFERENCES users(login),body TEXT NOT NULL,created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); CREATE INDEX IF NOT EXISTS direct_pair ON direct_messages(author,recipient,id)');
+ seedPortal(s);
+ s.transaction(()=>{
+  if(!s.run("INSERT OR IGNORE INTO demo_updates VALUES('demo-private-consultation')").changes)return;
+  const insert='INSERT INTO direct_messages(author,recipient,body) VALUES(?,?,?)';
+  s.run(insert,'demo_student','demo_teacher','Добрый день! Можно принести черновик решения на консультацию?');
+  s.run(insert,'demo_teacher','demo_student','Да, конечно. Отметьте место, где возник вопрос, и разберём его вместе.');
+ });
  function lessons(u){return s.all('SELECT l.*,p.name teacher_name FROM lessons l JOIN users p ON p.login=l.teacher '+(u.role==='dean'?'':u.role==='teacher'?'WHERE l.teacher=? ':'WHERE l.group_id=? ')+'ORDER BY l.day,l.start',...(u.role==='dean'?[]:[u.role==='teacher'?u.login:u.group_id]));}
  function requests(u){requireRole(u,'student','dean');return s.all('SELECT r.*,u.name FROM requests r JOIN users u ON u.login=r.student '+(u.role==='student'?'WHERE student=? ':'')+'ORDER BY r.id DESC',...(u.role==='student'?[u.login]:[]));}
  function grades(u){return s.all('SELECT g.*,u.name,u.group_id FROM grades g JOIN users u ON u.login=g.student '+(u.role==='student'?'WHERE student=?':u.role==='teacher'?'WHERE teacher=?':'')+' ORDER BY g.id',...(['student','teacher'].includes(u.role)?[u.login]:[]));}
  function appeals(u){return s.all('SELECT a.*,u.name FROM appeals a JOIN users u ON u.login=a.author '+(u.role==='dean'?'':'WHERE author=? ')+'ORDER BY a.id DESC',...(u.role==='dean'?[]:[u.login]));}
- function announcements(u){return u.role==='dean'?s.all('SELECT * FROM announcements ORDER BY id DESC LIMIT 100'):s.all('SELECT * FROM announcements WHERE audience IN (?,?,?) ORDER BY id DESC LIMIT 100','all',u.role,u.group_id);}
+ function announcements(u){const query='SELECT a.*,p.name author_name FROM announcements a JOIN users p ON p.login=a.author ';return s.all(query+(u.role==='dean'?'':'WHERE audience IN (?,?,?) ')+'ORDER BY a.id DESC LIMIT 100',...(u.role==='dean'?[]:['all',u.role,u.group_id]));}
  function stats(){return {students:s.one("SELECT COUNT(*) n FROM users WHERE role='student'").n,teachers:s.one("SELECT COUNT(*) n FROM users WHERE role='teacher'").n,deans:s.one("SELECT COUNT(*) n FROM users WHERE role='dean'").n,debtors:s.one('SELECT COUNT(DISTINCT student) n FROM grades WHERE value=2').n,requests:s.all('SELECT status,COUNT(*) count FROM requests GROUP BY status'),appeals:s.one("SELECT COUNT(*) n FROM appeals WHERE status='Открыто'").n,groups:s.all("SELECT group_id,COUNT(*) count FROM users WHERE role='student' GROUP BY group_id")};}
  function context(u,message=''){
   const q=message.toLowerCase();const result={profile:publicUser(u),capabilities:(u.role==='dean'?deanCapabilities:u.role==='teacher'?teacherCapabilities:studentCapabilities).map(c=>({name:c.label,example:c.prompt})),note:'Только вымышленные учебные данные. Отсутствующие сведения не придумывай.'};
@@ -41,6 +50,7 @@ export function createRoutes(s){
    }
   }
   const q=message.toLowerCase();
+  if(!/общ.*чат|обращен|объявлен/.test(q)&&/напиш|написать|отправ|личн.*сообщ/.test(q)&&/преподав|декан|студент|сообщен|личк/.test(q))return {source:'workflow',answer:'Выберите получателя, затем продиктуйте или напишите текст. Перед отправкой я покажу личное сообщение целиком.',actions:[{id:'direct-compose',label:'Подготовить личное сообщение'}]};
   const read=path=>{const url=new URL(path,'http://localhost');return handle('GET',url.pathname,u,{},url);};
   const agent=(u.role==='dean'?createDeanAgent(s,read):createRoleAgent(read))(u,message);if(agent)return agent;
   const guide=(answer,actions,extra={})=>({answer,source:'workflow',actions,...extra});
@@ -62,6 +72,15 @@ export function createRoutes(s){
  }
 
  function handle(method,path,u,b,url){
+  if(method==='GET'&&path==='/api/contacts')return {contacts:s.all('SELECT login,name,role,group_id,(SELECT MAX(id) FROM direct_messages WHERE (author=? AND recipient=p.login) OR (recipient=? AND author=p.login)) latest FROM users p WHERE login<>? ORDER BY latest DESC,name',u.login,u.login,u.login)};
+  if(path==='/api/direct'&&['GET','POST'].includes(method)){
+   const peer=method==='GET'?url.searchParams.get('peer'):b.recipient;
+   if(typeof peer!=='string'||peer===u.login||!s.one('SELECT login FROM users WHERE login=?',peer))fail(400,'Выберите собеседника.');
+   if(method==='GET')return {messages:s.all('SELECT m.*,p.name FROM direct_messages m JOIN users p ON p.login=m.author WHERE (author=? AND recipient=?) OR (author=? AND recipient=?) ORDER BY m.id DESC LIMIT 100',u.login,peer,peer,u.login).reverse()};
+   confirmed(b);const body=text(b.body,1000);
+   return s.transaction(()=>{const id=Number(s.run('INSERT INTO direct_messages(author,recipient,body) VALUES(?,?,?)',u.login,peer,body).lastInsertRowid);s.notify(peer,'Личное сообщение от '+u.name+'. Откройте чат.');return {id};});
+  }
+  if(method==='GET'&&path==='/api/portal')return portalFeed(s,u);
   const deanResult=deanRoutes(method,path,u,b,url);if(deanResult!==undefined)return deanResult;
   if(method==='GET'&&path==='/api/workspace')return {user:publicUser(u),groups:[...new Set(lessons(u).map(l=>l.group_id))],persistent:true};
   if(method==='GET'&&path==='/api/students'){

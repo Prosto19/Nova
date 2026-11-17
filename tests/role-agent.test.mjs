@@ -68,3 +68,30 @@ test('a date follow-up keeps an explicit dean group and uses the timetable',asyn
  const dean=await login('demo_dean');await ask(dean,'Покажи расписание группы ПИ-01');
  const follow=await ask(dean,'А на 2026-12-02?');assert.ok(follow.schedule.length);assert.ok(follow.schedule.every(l=>l.group_id==='ПИ-01'&&l.day==='2026-12-02'));
 });
+
+test('portal examples survive reopening once and new events respect the audience',async()=>{
+ const {seedPortal}=await import('../backend/portal.mjs');
+ seedPortal(store);assert.equal(store.one('SELECT COUNT(*) n FROM portal_examples').n,5);
+ const teacher=await login('demo_teacher'),other=await login('teacher002'),dean=await login('demo_dean'),student=await login('demo_student');
+ const feed=async cookie=>(await call('/api/portal',cookie)).body.events;
+ assert.ok((await feed(teacher)).some(e=>e.demo&&e.kind==='reply'));
+ assert.ok(!(await feed(student)).some(e=>e.demo&&(e.kind==='reply'||e.kind==='appeal')));
+ assert.ok(!(await feed(other)).some(e=>e.demo&&e.kind==='appeal'));
+ const sent=await call('/api/appeals',teacher,{subject:'Проверка ленты',body:'Запрос аудитории'});
+ assert.ok((await feed(dean)).some(e=>e.kind==='appeal'&&e.id===sent.body.id&&!e.demo));
+ assert.ok(!(await feed(other)).some(e=>e.kind==='appeal'&&e.id===sent.body.id));
+});
+
+
+test('personal message is delivered only to the chosen peer and stays outside the public feed',async()=>{
+ const student=await login('demo_student'),teacher=await login('demo_teacher'),dean=await login('demo_dean');
+ assert.equal((await ask(student,'Напиши преподавателю личное сообщение')).actions[0].id,'direct-compose');
+ const draft={recipient:'demo_teacher',body:'Проверка личной переписки'};
+ assert.equal((await call('/api/direct',student,draft)).status,400);
+ assert.equal((await call('/api/direct',student,{...draft,confirm:true})).status,200);
+ const seen=async(path,cookie)=>JSON.stringify((await call(path,cookie)).body).includes(draft.body);
+ assert.ok(await seen('/api/direct?peer=demo_student',teacher));
+ assert.ok(!await seen('/api/direct?peer=demo_student',dean));
+ assert.ok(!await seen('/api/messages',student));
+ assert.ok(!await seen('/api/announcements',teacher));
+});

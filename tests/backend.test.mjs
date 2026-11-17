@@ -14,7 +14,7 @@ test('persistent role workflows, authorization, conflicts and all 109 seed login
  assert.equal((await call('/api/stats',student)).status,403);
  const stats=(await call('/api/stats',dean)).body;assert.deepEqual([stats.students,stats.teachers,stats.deans],[100,6,3]);
  assert.equal((await call('/api/students',dean)).body.students.length,100);
- const chat=(await call('/api/chat',student,{message:'Покажи моё расписание'}));assert.equal(chat.status,200);assert.equal(chat.body.source,'database');assert.ok(chat.body.schedule.every(l=>l.group_id==='ПИ-01'));assert.equal(chat.body.schedule.length,2);
+ const chat=(await call('/api/chat',student,{message:'Покажи моё расписание'}));assert.equal(chat.status,200);assert.equal(chat.body.source,'database');assert.ok(chat.body.schedule.every(l=>l.group_id==='ПИ-01'));assert.equal(chat.body.schedule.length,10);
  const deniedSchedule=await call('/api/chat',student,{message:'Покажи расписание ПИ-02'});assert.equal(deniedSchedule.body.schedule.length,0);
  const roster=(await call('/api/students',teacher)).body.students;assert.ok(roster.length>0&&roster.length<100);
  const create=await call('/api/requests',student,{kind:'Справка об обучении',body:'Для проверки backend',student:'student099'});assert.equal(create.status,200);const req=create.body.request;assert.equal(req.student,'demo_student');
@@ -36,7 +36,7 @@ test('persistent role workflows, authorization, conflicts and all 109 seed login
  assert.equal((await call('/api/grades/'+g.id,teacher2,{value:5,version:g.version,reason:'Проверено',confirm:true})).status,403);
  assert.equal((await call('/api/grades/'+g.id,teacher,{value:5,version:g.version,reason:'Перепроверка работы',confirm:true})).status,200);
  assert.equal((await call('/api/announcements',dean,{audience:'student',subject:'Тест',body:'Сообщение студентам',confirm:true})).status,200);
- assert.equal((await call('/api/announcements',student)).body.announcements.length,1);assert.equal((await call('/api/announcements',teacher)).body.announcements.length,0);
+ assert.equal((await call('/api/announcements',student)).body.announcements.filter(a=>a.subject==='Тест').length,1);assert.equal((await call('/api/announcements',teacher)).body.announcements.filter(a=>a.subject==='Тест').length,0);
  const appeal=(await call('/api/appeals',teacher,{subject:'Консультация',body:'Уточните время'})).body;
  assert.equal((await call('/api/appeals/'+appeal.id,dean,{reply:'В 15:00',version:1,confirm:true})).status,200);
  assert.equal((await call('/api/appeals',teacher)).body.appeals[0].reply,'В 15:00');

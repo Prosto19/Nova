@@ -1,0 +1,21 @@
+name: Publish Windows demo
+on:
+  push:
+    tags: ['v0.2.*']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm test
+      - run: ./scripts/build-portable.ps1
+      - name: Publish demo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:GITHUB_REF_NAME release/NOVA-Windows-x64.zip --verify-tag --title "NOVA для жюри" --notes "Скачайте ZIP, распакуйте и откройте Start-NOVA.cmd. Краткий гид находится в GUIDE.txt."
