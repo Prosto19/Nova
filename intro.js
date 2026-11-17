@@ -1,0 +1,11 @@
+const intro=document.querySelector('#nova-intro'), canvas=document.querySelector('#star-canvas'), ctx=canvas.getContext('2d');
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let w,h,dpr,raf,started,finished=false;
+const stars=Array.from({length:1500},()=>({x:Math.random(),y:Math.random(),z:.15+Math.random()*.85,r:.3+Math.random()*1.5,phase:Math.random()*6.28}));
+function resize(){w=innerWidth;h=innerHeight;dpr=Math.min(devicePixelRatio||1,2);canvas.width=w*dpr;canvas.height=h*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);}
+resize();window.addEventListener('resize',resize);
+function finish(){if(finished)return;finished=true;cancelAnimationFrame(raf);intro.classList.add('finished');document.querySelector('#app-shell').inert=false;document.querySelector('#skip-intro').disabled=true;setTimeout(()=>{intro.hidden=true;document.querySelector('#replay-intro').focus({preventScroll:true});},700);}
+function frame(time){if(finished)return;if(!started)started=time;const t=(time-started)/1000;ctx.clearRect(0,0,w,h);const progress=Math.min(t/3.6,1);for(const s of stars){const a=s.x*Math.PI*8;const radius=(.04+s.y*.47)*Math.min(w,h);const tx=w/2+Math.cos(a+t*(.018+s.z*.027))*radius*1.5,ty=h/2+Math.sin(a+t*(.018+s.z*.027))*radius*.8;const rawBlend=Math.max(0,Math.min((t-1)/2.7,1)),blend=rawBlend*rawBlend*(3-2*rawBlend);const x=s.x*w*(1-blend)+tx*blend,y=s.y*h*(1-blend)+ty*blend;const alpha=(.3+.7*s.z)*(.75+.25*Math.sin(t*1.4+s.phase));ctx.fillStyle=`rgba(${170+s.z*85},${200+s.z*55},255,${alpha})`;ctx.beginPath();ctx.arc(x,y,s.r*(.5+progress),0,Math.PI*2);ctx.fill();if(s.z>.97){ctx.fillStyle=`rgba(200,228,255,${alpha*.4})`;ctx.fillRect(x-5,y-.4,10,.8);ctx.fillRect(x-.4,y-5,.8,10);}}
+intro.classList.toggle('reveal',t>2.1);intro.classList.toggle('wordmark',t>3.1);if(t>6.2){finish();return;}raf=requestAnimationFrame(frame);}
+function play(){finished=false;started=0;intro.hidden=false;intro.className='intro';document.querySelector('#skip-intro').disabled=false;document.querySelector('#app-shell').inert=true;if(reduce){finish();return;}raf=requestAnimationFrame(frame);}
+document.querySelector('#skip-intro').addEventListener('click',finish);document.querySelector('#replay-intro').addEventListener('click',play);document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!intro.hidden)finish();});play();
