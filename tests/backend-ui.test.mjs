@@ -96,3 +96,13 @@ test('uncertain submission keeps draft and blocks duplicate sends',async()=>{
  await w.NOVA_BACKEND.chat('Для теста сетевого обрыва');const real=w.fetch;let submissions=0;w.fetch=async(path,opts)=>{if(path==='/api/requests'&&opts?.method==='POST'){submissions++;throw Error('Connection lost');}return real(path,opts);};
  const submit=[...last().querySelectorAll('button')].find(b=>b.textContent==='Подтвердить отправку');submit.click();await wait(()=>last().textContent.includes('Результат отправки неизвестен'));assert.equal(submit.disabled,true);await w.NOVA_BACKEND.chat('Отправь повторно');assert.match(last().textContent,/Повторная отправка заблокирована/);assert.equal(submissions,1);assert.ok(![...last().querySelectorAll('button')].some(b=>b.textContent==='Подтвердить отправку'));w.fetch=real;await w.NOVA_BACKEND.chat('Отмена');
 });
+
+test('fast reply stays cancellable during the visual beat',async()=>{
+ const w=await page('student1');w.matchMedia=()=>({matches:false});
+ const pending=w.NOVA_BACKEND.chat('Покажи расписание');
+ await wait(()=>w.document.querySelector('.nova-pending .cancel-wait'));
+ await new Promise(r=>setTimeout(r,90));
+ const button=w.document.querySelector('.nova-pending .cancel-wait');assert.ok(button);button.click();await pending;
+ assert.match(w.document.querySelector('.backend-chat').lastElementChild.textContent,/Ожидание отменено/);
+ assert.equal(w.document.querySelector('.backend-chat .chat-lesson'),null);
+});

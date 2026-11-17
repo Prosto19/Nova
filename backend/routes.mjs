@@ -29,6 +29,17 @@ export function createRoutes(s){
  }
  function readAnswer(u,message){
   if(typeof message!=='string'||message.length>2000||!message.trim())return null;
+  // General study questions often mention exams or grades without asking for a database lookup.
+  if (/^(?:как (?:мне |лучше )?(?:подготовиться|выучить|запомнить)|объясни (?:мне )?(?:разницу|понятие|почему)|дай (?:мне )?(?:совет|рекомендац)|помоги (?:мне )?подготовиться)/iu.test(message.trim())) return null;
+  const followUp = /^а?\s*(?:на )?(сегодня|завтра|\d{4}-\d{2}-\d{2})[?!. ]*$/iu.exec(message.trim());
+  if (followUp) {
+   const previous = s.one("SELECT body FROM chats WHERE owner=? AND role='assistant' ORDER BY id DESC LIMIT 1",u.login)?.body || '';
+   if (/расписани|учебные события|доступном вам расписании/i.test(previous)) {
+    // A result may list multiple groups; inherit only an explicitly requested group.
+    const explicitGroup = previous.split('\n')[0].match(/группы (ПИ-\d{2})/i)?.[1];
+    message = 'Покажи расписание '+followUp[1]+(explicitGroup?' группы '+explicitGroup:'');
+   }
+  }
   const q=message.toLowerCase();
   const read=path=>{const url=new URL(path,'http://localhost');return handle('GET',url.pathname,u,{},url);};
   const agent=(u.role==='dean'?createDeanAgent(s,read):createRoleAgent(read))(u,message);if(agent)return agent;

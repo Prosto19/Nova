@@ -63,3 +63,8 @@ test('teacher → student grade, dean → teacher move, conflicts and unauthoriz
  assert.equal((await call('/api/staff-requests/'+staff.id+'/reply',teacher,{reply:'Получено',confirm:true})).status,200);
  assert.ok((await ask(dean,'Покажи обращения')).items.some(i=>i.body.includes('Получено')));
 });
+
+test('a date follow-up keeps an explicit dean group and uses the timetable',async()=>{
+ const dean=await login('demo_dean');await ask(dean,'Покажи расписание группы ПИ-01');
+ const follow=await ask(dean,'А на 2026-12-02?');assert.ok(follow.schedule.length);assert.ok(follow.schedule.every(l=>l.group_id==='ПИ-01'&&l.day==='2026-12-02'));
+});

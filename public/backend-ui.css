@@ -24,3 +24,10 @@
 .chat-result-list{display:grid;gap:12px;margin-top:18px}.chat-result-list h3{font-size:15px;margin:0;font-weight:600;color:#dceaff}.chat-result-list p{white-space:pre-wrap;line-height:1.7}.nova-action-list{display:flex;gap:8px;flex-wrap:wrap}
 .nova-workspace .workspace-center [data-target=chat] .role-chat-send{background:#2b66c7;border-radius:50%;width:38px;height:38px;flex:none;margin-left:10px;color:#edf5ff}
 .chat-started > [data-target=greeting]{display:none}
+@media(prefers-reduced-motion:no-preference){
+ .nova-pending .thinking-orb{position:relative;background:radial-gradient(circle at 40% 30%,#315688,#142942 70%)}
+ .nova-pending .thinking-orb::after{content:'';position:absolute;inset:-5px;border:1px solid transparent;border-top-color:#80baff;border-right-color:#4679b966;border-radius:50%;animation:nova-orbit 1.65s linear infinite}
+ .nova-answer-text{animation:nova-answer-enter .28s ease-out both}
+ @keyframes nova-orbit{to{transform:rotate(360deg)}}
+ @keyframes nova-answer-enter{from{opacity:.3;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+}
