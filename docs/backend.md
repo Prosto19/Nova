@@ -20,3 +20,7 @@ V2 routes: GET `/api/students/:login`, GET `/api/requests/:id`, GET `/api/lesson
 The UI sends schedule proposals instead of direct changes. Only the assigned teacher can accept/reject. Acceptance rechecks version and all conflicts transactionally. A partial unique index prevents duplicate pending proposals. The legacy direct lesson edit API remains dean-only for compatibility; it can invalidate pending proposals, which will then require rejection and a fresh proposal.
 
 Known workflows return structured chat actions with a fixed client allowlist. They do not execute mutations. Student/request details enforce ownership or assigned group scope. Analytics filters affect student-related metrics; pending transfer count is explicitly faculty-wide.
+
+
+### Диалоговое обращение
+В кабинете деканата запрос «Создать обращение» предлагает диалог или обычную форму. Диалог уточняет получателя из базы, тему (120 символов) и сообщение (2000 символов), показывает предпросмотр и отправляет только по кнопке подтверждения. Черновик можно изменить или отменить; он хранится в памяти вкладки и не переживает обновление страницы. Ответы показываются постепенно после получения результата API (это визуальный эффект, не потоковая генерация Ollama). Переписка прокручивается отдельно от поля ввода; автозапуск экскурсии прекращается при обращении к чату.
