@@ -1,3 +1,4 @@
+import {createDeanAgent,deanCapabilities} from './agent.mjs';
 import {createDeanRoutes} from './dean.mjs';
 import {publicUser} from './store.mjs';
 export class ApiError extends Error{constructor(status,message){super(message);this.status=status;}}
@@ -16,7 +17,7 @@ export function createRoutes(s){
  function announcements(u){return u.role==='dean'?s.all('SELECT * FROM announcements ORDER BY id DESC LIMIT 100'):s.all('SELECT * FROM announcements WHERE audience IN (?,?,?) ORDER BY id DESC LIMIT 100','all',u.role,u.group_id);}
  function stats(){return {students:s.one("SELECT COUNT(*) n FROM users WHERE role='student'").n,teachers:s.one("SELECT COUNT(*) n FROM users WHERE role='teacher'").n,deans:s.one("SELECT COUNT(*) n FROM users WHERE role='dean'").n,debtors:s.one('SELECT COUNT(DISTINCT student) n FROM grades WHERE value=2').n,requests:s.all('SELECT status,COUNT(*) count FROM requests GROUP BY status'),appeals:s.one("SELECT COUNT(*) n FROM appeals WHERE status='Открыто'").n,groups:s.all("SELECT group_id,COUNT(*) count FROM users WHERE role='student' GROUP BY group_id")};}
  function context(u,message=''){
-  const q=message.toLowerCase();const result={profile:publicUser(u),capabilities:'Расписание, заявления, оценки, обращения, объявления и общий чат. Административные изменения выполняются вручную с подтверждением.',note:'Только вымышленные учебные данные. Отсутствующие сведения не придумывай.'};
+  const q=message.toLowerCase();const result={profile:publicUser(u),capabilities:u.role==='dean'?deanCapabilities.map(c=>({name:c.label,example:c.prompt})):'Расписание, оценки и обращения своей роли',note:'Только вымышленные учебные данные. Отсутствующие сведения не придумывай.'};
   if(/распис|занят|экзам|пар[уыа]/.test(q))result.schedule=lessons(u).slice(0,12);
   if(/заяв|справ|документ/.test(q)&&u.role!=='teacher')result.requests=requests(u).slice(0,8);
   if(/оцен|успеваем|задолж/.test(q))result.grades=grades(u).slice(0,12);
@@ -28,6 +29,7 @@ export function createRoutes(s){
  function readAnswer(u,message){
   if(typeof message!=='string'||message.length>2000||!message.trim())return null;
   const q=message.toLowerCase();
+  const agent=createDeanAgent(s,path=>{const url=new URL(path,'http://localhost');return handle('GET',url.pathname,u,{},url);})(u,message);if(agent)return agent;
   const guide=(answer,actions,extra={})=>({answer,source:'workflow',actions,...extra});
   if(u.role==='dean'){
    if(/обращ/.test(q)&&/сдел|созда|оформ|напиш|отправ|подготов/.test(q))return guide('Помогу создать служебное обращение. Можем составить его прямо в чате: я уточню получателя, тему и текст. Или откройте обычную форму кнопкой ниже. Перед отправкой покажу предпросмотр. Без подтверждения ничего не отправляется.',[{id:'compose-staff',label:'Создать обращение здесь'}]);
@@ -46,7 +48,7 @@ export function createRoutes(s){
   return {answer:found.length?`Вот расписание${date?' на '+date:''}${group?' группы '+group:''}. Данные из учебной базы.`:`${date?'На '+date:'По этому запросу'} занятий в доступном вам расписании нет. Можно попросить показать расписание без даты.`,source:'database',schedule:found.slice(0,30),total:found.length};
  }
 
- async function handle(method,path,u,b,url){
+ function handle(method,path,u,b,url){
   const deanResult=deanRoutes(method,path,u,b,url);if(deanResult!==undefined)return deanResult;
   if(method==='GET'&&path==='/api/workspace')return {user:publicUser(u),groups:[...new Set(lessons(u).map(l=>l.group_id))],persistent:true};
   if(method==='GET'&&path==='/api/students'){

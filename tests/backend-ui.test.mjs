@@ -38,3 +38,24 @@ test('real UI boots each role; schedule answers stay inside chat; sections use b
  await wait(()=>!d.querySelector('[data-target=chat]').dataset.busy);const realFetch=dean.fetch;dean.fetch=(url,options)=>url==='/api/chat'?new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new dean.DOMException('Aborted','AbortError')))):realFetch(url,options);input.value='Свободный вопрос';d.querySelector('[data-target=chat]').dispatchEvent(new dean.Event('submit',{bubbles:true,cancelable:true}));await wait(()=>d.querySelector('.cancel-wait'));d.querySelector('.cancel-wait').click();await wait(()=>!d.querySelector('[data-target=chat]').dataset.busy);assert.match(d.querySelector('.backend-chat').lastElementChild.textContent,/Ожидание отменено/);dean.fetch=realFetch;
 
 });
+
+test('agent chat publishes only after confirmation, replies, cancels drafts and explains failures',async()=>{
+ const w=await page('dean'),d=w.document;
+ const last=()=>d.querySelector('.backend-chat').lastElementChild;
+ const click=label=>{const b=[...last().querySelectorAll('button')].find(b=>b.textContent===label);assert.ok(b,label);b.click();};
+ await w.NOVA_BACKEND.chat('Создать объявление');click('Составить объявление');await wait(()=>last().textContent.includes('Кому предназначено'));
+ await w.NOVA_BACKEND.chat('student');await w.NOVA_BACKEND.chat('Проверка объявления');await w.NOVA_BACKEND.chat('Тестовое объявление для студентов.');
+ const before=(await (await w.fetch('/api/announcements')).json()).announcements.length;assert.match(last().textContent,/Ничего не отправлено/);
+ click('Подтвердить отправку');await wait(()=>last().textContent.includes('Объявление опубликовано'));
+ assert.equal((await (await w.fetch('/api/announcements')).json()).announcements.length,before+1);
+ await w.NOVA_BACKEND.chat('Отправь сообщение в общий чат');click('Написать сообщение');await wait(()=>last().textContent.includes('до 1000'));
+ await w.NOVA_BACKEND.chat('Тестовое сообщение.');click('Отменить черновик');await wait(()=>last().textContent.includes('Черновик отменён'));
+ await w.NOVA_BACKEND.chat('Отправь сообщение в общий чат');click('Написать сообщение');await wait(()=>last().textContent.includes('до 1000'));
+ await w.NOVA_BACKEND.chat('Проверка общего чата.');click('Подтвердить отправку');await wait(()=>last().textContent.includes('Сообщение опубликовано'));
+ const student=await page('student1');const created=await (await student.fetch('/api/appeals',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject:'Тест для агента',body:'Когда консультация?'})})).json();
+ await w.NOVA_BACKEND.chat('Покажи обращение №'+created.id);click('Подготовить ответ');await wait(()=>last().textContent.includes('Напишите ответ'));
+ await w.NOVA_BACKEND.chat('Консультация согласуется с преподавателем.');click('Подтвердить отправку');await wait(()=>last().textContent.includes('Ответ отправлен'));
+ const appeals=(await (await student.fetch('/api/appeals')).json()).appeals;assert.equal(appeals.find(a=>a.id===created.id).status,'Закрыто');
+ await w.NOVA_BACKEND.chat('Удали студента');assert.match(last().textContent,/функция пока недоступна/);assert.equal(d.querySelector('.section-view').hidden,true);
+ const realFetch=w.fetch;w.fetch=async()=>{throw new TypeError('Failed to fetch');};await w.NOVA_BACKEND.chat('Покажи аналитику');assert.match(last().textContent,/Не удалось связаться с сервером/);assert.ok([...last().querySelectorAll('button')].some(b=>b.textContent==='Повторить запрос'));w.fetch=realFetch;
+});

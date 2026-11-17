@@ -21,3 +21,4 @@
 .backend-message:has(.nova-answer-text){background:transparent;border-color:transparent}
 @media(max-width:600px){.nova-workspace:has(.chat-started:not([hidden])){height:100svh;display:flex;flex-direction:column;overflow:hidden}.nova-workspace:has(.chat-started:not([hidden])) aside{flex:none}.nova-workspace:has(.chat-started:not([hidden])) .workspace-content{height:auto;flex:1;min-height:0;padding:8px 12px}.chat-started .nova-quick-actions{max-height:76px;overflow:auto}.backend-message .nova-answer-text{font-size:14px}}
 .chat-started .backend-chat{display:flex;flex-direction:column;align-items:stretch;gap:18px}.chat-started .backend-message{flex:none}.chat-started .backend-message:has(>b){width:fit-content;min-width:120px}
+.chat-result-list{display:grid;gap:12px;margin-top:18px}.chat-result-list h3{font-size:15px;margin:0;font-weight:600;color:#dceaff}.chat-result-list p{white-space:pre-wrap;line-height:1.7}.nova-action-list{display:flex;gap:8px;flex-wrap:wrap}
