@@ -9,10 +9,11 @@ function validateSlot(s,l,b){
 }
 export function createDeanRoutes(s){
  s.db.exec(`CREATE TABLE IF NOT EXISTS lesson_changes(id INTEGER PRIMARY KEY,lesson_id INTEGER NOT NULL REFERENCES lessons(id),author TEXT NOT NULL REFERENCES users(login),teacher TEXT NOT NULL REFERENCES users(login),lesson_version INTEGER NOT NULL,payload TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'Ожидает ответа',comment TEXT NOT NULL DEFAULT '',created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+ CREATE TABLE IF NOT EXISTS request_clarifications(id INTEGER PRIMARY KEY,request_id INTEGER NOT NULL REFERENCES requests(id),student TEXT NOT NULL REFERENCES users(login),body TEXT NOT NULL,created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
  CREATE UNIQUE INDEX IF NOT EXISTS pending_lesson_change ON lesson_changes(lesson_id) WHERE status='Ожидает ответа';
  CREATE TABLE IF NOT EXISTS staff_requests(id INTEGER PRIMARY KEY,author TEXT NOT NULL REFERENCES users(login),recipient TEXT NOT NULL REFERENCES users(login),subject TEXT NOT NULL,body TEXT NOT NULL,reply TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'Открыто',created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
  `);
- if(s.one('PRAGMA user_version').user_version<2)s.db.exec('PRAGMA user_version=2');
+ if(s.one('PRAGMA user_version').user_version<3)s.db.exec('PRAGMA user_version=3');
  return function(method,path,u,b,url){
  if(method==='GET'&&path==='/api/staff'){must(u.role==='dean');return {staff:s.all("SELECT login,name,role FROM users WHERE role IN ('teacher','dean') ORDER BY name")};}
  if(method==='GET'&&path.startsWith('/api/students/')){
@@ -21,7 +22,7 @@ export function createDeanRoutes(s){
   const grades=s.all('SELECT subject,value,teacher FROM grades WHERE student=?'+(u.role==='teacher'?' AND teacher=?':''),login,...(u.role==='teacher'?[u.login]:[]));
   return {student:{...student,direction:'Прикладная информатика',faculty:'Факультет информатики',status:'Обучается'},grades,requests:u.role==='teacher'?[]:s.all('SELECT id,kind,status,body,comment,created FROM requests WHERE student=? ORDER BY id DESC',login),history:u.role==='teacher'?[]:s.all("SELECT action,entity_id,created FROM audit WHERE entity='request' AND entity_id IN (SELECT id FROM requests WHERE student=?) ORDER BY id DESC",login)};
  }
- if(method==='GET'&&/^\/api\/requests\/\d+$/.test(path)){const r=s.one('SELECT r.*,u.name,u.group_id,u.course FROM requests r JOIN users u ON u.login=r.student WHERE r.id=?',Number(path.split('/').pop()));if(!r)deny(404,'Заявка не найдена.');must(u.role==='dean'||u.login===r.student);return {request:r,history:s.all("SELECT action,actor,before_json,after_json,created FROM audit WHERE entity='request' AND entity_id=? ORDER BY id",r.id)};}
+ if(method==='GET'&&/^\/api\/requests\/\d+$/.test(path)){const r=s.one('SELECT r.*,u.name,u.group_id,u.course FROM requests r JOIN users u ON u.login=r.student WHERE r.id=?',Number(path.split('/').pop()));if(!r)deny(404,'Заявка не найдена.');must(u.role==='dean'||u.login===r.student);return {request:r,clarifications:s.all('SELECT body,created FROM request_clarifications WHERE request_id=? ORDER BY id',r.id),history:s.all("SELECT action,actor,before_json,after_json,created FROM audit WHERE entity='request' AND entity_id=? ORDER BY id",r.id)};}
  if(method==='GET'&&/^\/api\/lessons\/\d+\/availability$/.test(path)){
   must(u.role==='dean');const l=s.one('SELECT * FROM lessons WHERE id=?',Number(path.split('/')[3]));if(!l)deny(404,'Событие не найдено.');const day=url.searchParams.get('day'),room=url.searchParams.get('room')||l.room;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(day||'')||!Number.isFinite(Date.parse(day))||new Date(day).toISOString().slice(0,10)!==day)deny(400,'Выберите дату в календаре.');

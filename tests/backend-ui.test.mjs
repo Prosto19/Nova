@@ -59,3 +59,40 @@ test('agent chat publishes only after confirmation, replies, cancels drafts and 
  await w.NOVA_BACKEND.chat('Удали студента');assert.match(last().textContent,/функция пока недоступна/);assert.equal(d.querySelector('.section-view').hidden,true);
  const realFetch=w.fetch;w.fetch=async()=>{throw new TypeError('Failed to fetch');};await w.NOVA_BACKEND.chat('Покажи аналитику');assert.match(last().textContent,/Не удалось связаться с сервером/);assert.ok([...last().querySelectorAll('button')].some(b=>b.textContent==='Повторить запрос'));w.fetch=realFetch;
 });
+
+test('student and teacher chat workflows exchange real data with dean and preserve role boundaries',async()=>{
+ const student=await page('student1'),dean=await page('dean'),teacher=await page('teacher');
+ const last=w=>w.document.querySelector('.backend-chat').lastElementChild;
+ const press=(w,label)=>{const b=[...last(w).querySelectorAll('button')].find(b=>b.textContent===label);assert.ok(b,label);b.click();};
+ const api=async(w,path,data)=>{const r=await w.fetch(path,data===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const body=await r.json();assert.equal(r.status,200,JSON.stringify(body));return body;};
+ await student.NOVA_BACKEND.chat('Закажи справку');press(student,'Подготовить заявку');await wait(()=>last(student).textContent.includes('назначение справки'));
+ const before=(await api(student,'/api/requests')).requests.length;
+ await student.NOVA_BACKEND.chat('Для общежития');assert.match(last(student).textContent,/Ничего не отправлено/);assert.equal((await api(student,'/api/requests')).requests.length,before);
+ press(student,'Подтвердить отправку');await wait(()=>last(student).textContent.includes('Заявка отправлена'));let req=(await api(student,'/api/requests')).requests[0];assert.equal(req.body,'Для общежития');
+ req=(await api(dean,'/api/requests/'+req.id,{status:'На рассмотрении',version:req.version,confirm:true})).request;
+ req=(await api(dean,'/api/requests/'+req.id,{status:'Требуется уточнение',comment:'Укажите номер общежития',version:req.version,confirm:true})).request;
+ await student.NOVA_BACKEND.chat('Покажи заявление №'+req.id);press(student,'Ответить на уточнение');await wait(()=>last(student).textContent.includes('Напишите дополнение'));
+ await student.NOVA_BACKEND.chat('Общежитие №2');press(student,'Подтвердить отправку');await wait(()=>last(student).textContent.includes('Уточнение отправлено'));
+ const detail=await api(dean,'/api/requests/'+req.id);assert.equal(detail.request.status,'На рассмотрении');assert.equal(detail.clarifications[0].body,'Общежитие №2');
+ student.document.querySelector('[data-detail="Справки и заявления"]').click();await wait(()=>student.document.querySelector('.section-body [data-action-key]'));student.document.querySelector('.section-body [data-action-key]').click();await wait(()=>student.document.querySelector('.request-original'));assert.equal(student.document.querySelector('.detail-content form'),null);assert.match(student.document.querySelector('.detail-content').textContent,/Общежитие №2/);student.document.querySelector('.detail-top button').click();student.document.querySelector('[data-home]').click();
+ await student.NOVA_BACKEND.chat('Создать обращение');press(student,'Написать обращение в деканат');await wait(()=>last(student).textContent.includes('Напишите тему'));
+ await student.NOVA_BACKEND.chat('Вопрос о практике');await student.NOVA_BACKEND.chat('Когда начинается практика?');press(student,'Подтвердить отправку');await wait(()=>last(student).textContent.includes('Обращение отправлено'));
+ assert.ok((await api(dean,'/api/appeals')).appeals.some(a=>a.subject==='Вопрос о практике'));
+ await teacher.NOVA_BACKEND.chat('Изменить оценку');press(teacher,'Исправить оценку');await wait(()=>last(teacher).textContent.includes('Выберите новую оценку'));
+ await teacher.NOVA_BACKEND.chat('5');await teacher.NOVA_BACKEND.chat('Проверена работа после пересдачи');press(teacher,'Подтвердить отправку');await wait(()=>last(teacher).textContent.includes('Оценка исправлена'));
+ await student.NOVA_BACKEND.chat('Покажи мои оценки');assert.match(last(student).textContent,/Оценка: 5/);
+ const lesson=(await api(teacher,'/api/lessons')).lessons[0];await api(dean,'/api/lesson-changes',{...lesson,lessonId:lesson.id,start:'14:45',end:'16:15',confirm:true});
+ await teacher.NOVA_BACKEND.chat('Покажи запросы на перенос');press(teacher,'Рассмотреть перенос');await wait(()=>last(teacher).textContent.includes('Согласовать или отклонить'));
+ await teacher.NOVA_BACKEND.chat('accept');await teacher.NOVA_BACKEND.chat('Время подходит');press(teacher,'Подтвердить отправку');await wait(()=>last(teacher).textContent.includes('Решение сохранено'));
+ await student.NOVA_BACKEND.chat('Покажи расписание');assert.match(last(student).textContent,/14:45/);
+ await student.NOVA_BACKEND.chat('Поставь оценку 5');assert.match(last(student).textContent,/не может изменять оценки/);
+ await teacher.NOVA_BACKEND.chat('Создай объявление');assert.match(last(teacher).textContent,/может деканат/);
+ for(const w of [student,teacher]){assert.equal(w.document.querySelector('.section-view').hidden,true);assert.ok(w.document.querySelector('[aria-label="Отправить запрос"]'));}
+});
+
+test('uncertain submission keeps draft and blocks duplicate sends',async()=>{
+ const w=await page('student1'),d=w.document,last=()=>d.querySelector('.backend-chat').lastElementChild;
+ await w.NOVA_BACKEND.chat('Закажи справку');[...last().querySelectorAll('button')].find(b=>b.textContent==='Подготовить заявку').click();await wait(()=>last().textContent.includes('назначение справки'));
+ await w.NOVA_BACKEND.chat('Для теста сетевого обрыва');const real=w.fetch;let submissions=0;w.fetch=async(path,opts)=>{if(path==='/api/requests'&&opts?.method==='POST'){submissions++;throw Error('Connection lost');}return real(path,opts);};
+ const submit=[...last().querySelectorAll('button')].find(b=>b.textContent==='Подтвердить отправку');submit.click();await wait(()=>last().textContent.includes('Результат отправки неизвестен'));assert.equal(submit.disabled,true);await w.NOVA_BACKEND.chat('Отправь повторно');assert.match(last().textContent,/Повторная отправка заблокирована/);assert.equal(submissions,1);assert.ok(![...last().querySelectorAll('button')].some(b=>b.textContent==='Подтвердить отправку'));w.fetch=real;await w.NOVA_BACKEND.chat('Отмена');
+});
