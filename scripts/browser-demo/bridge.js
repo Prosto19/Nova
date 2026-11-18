@@ -27,12 +27,22 @@
    let result;
    if(path==='/api/chat'&&method==='POST'){
     if(completion && completion.owner!==user.login)return respond({error:'Сессия изменилась.'},401);
-    result=completion?{answer:completion.answer,source:'browser-model'}:routes.readAnswer(user,b.message);
+    if(typeof b.message!=='string'||!b.message.trim()||b.message.length>2000)return respond({error:'Введите вопрос длиной до 2000 символов.'},400);
+    const modelPrefix='Спросить модель: ';
+    const askModel=b.message.startsWith(modelPrefix);
+    result=completion?{answer:completion.answer,source:'browser-model'}:askModel?null:routes.readAnswer(user,b.message);
+    if(!result&&!askModel){
+     result={source:'workflow',answer:'У меня пока нет проверенного ответа на этот вопрос. Могу показать, с чем помогу в вашем кабинете. Если нужен свободный ответ, можно отдельно спросить языковую модель.',actions:[{id:'agent-prompt',label:'Мои возможности',prompt:'Что ты умеешь?'}]};
+     if(b.message.length+modelPrefix.length<=2000)result.actions.push({id:'agent-prompt',label:'Спросить модель',prompt:modelPrefix+b.message});
+    }
     if(!result){
+     const question=b.message.slice(modelPrefix.length);
      const history=all('SELECT role,body FROM chats WHERE owner=? ORDER BY id DESC LIMIT 6',user.login).reverse();
+     if(history.at(-1)?.body.startsWith('У меня пока нет проверенного ответа')&&history.at(-2)?.body===question)history.splice(-2);
+     if(history[0]?.role==='assistant')history.shift();
      return {owner:user.login,messages:[
-      {role:'system',content:'Ты NOVA, помощник университета. Отвечай по-русски кратко, учитывай диалог. Не выдумывай данные и не обещай выполненных действий. Доступный контекст: '+JSON.stringify(routes.context(user,b.message)).slice(0,2200)},
-      ...history.map(m=>({role:m.role,content:m.body.slice(0,550)})),{role:'user',content:b.message.slice(0,1600)}]};
+      {role:'system',content:'Ты NOVA, помощник университета. Ответь на последний вопрос по-русски в двух-трёх предложениях. Если не знаешь, скажи об этом. Не обещай выполненных действий.'},
+      ...history.map(m=>({role:m.role,content:m.body.slice(0,550)})),{role:'user',content:question.slice(0,1600)}]};
     }
     for(const [role,body] of [['user',b.message],['assistant',result.answer]])run('INSERT INTO chats(owner,role,body) VALUES(?,?,?)',user.login,role,body);
    }else if(path==='/api/chat')result={messages:all('SELECT role,body,created FROM chats WHERE owner=? ORDER BY id DESC LIMIT 40',user.login).reverse()};
