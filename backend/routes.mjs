@@ -37,7 +37,24 @@ export function createRoutes(s){
   return result;
  }
  function readAnswer(u,message){
+  if(typeof message!=='string'||message.length>2000||!message.trim())return null;
   const query=message.toLowerCase().trim();
+  const words=query.replace(/[?!.,:—-]+/g,' ').replace(/\s+/g,' ').trim();
+  const reply=answer=>({source:'workflow',answer});
+  if (/^(?:(?:привет|нова|скажи пожалуйста|скажи) )*(?:как (?:тебя|вас) зовут|кто ты|как (?:твое|твоё) имя|представься)$/.test(words))
+   return reply('Меня зовут NOVA. Я помощник цифрового деканата. Могу подсказать, когда ближайшая пара, или помочь написать сообщение. С чего начнём?');
+  if (/^(?:спасибо(?: большое)?|благодарю|понятно спасибо)$/.test(words))
+   return reply('Пожалуйста! Если появится ещё вопрос, я здесь.');
+  const examAdvice=/экзам|сесси|зач[её]т/.test(words)&&/как .*подготов|как .*готовиться|помоги .*готов|совет.*подготов|план подготовки/.test(words);
+  if(examAdvice)
+   return reply('Начни с одного билета. Попробуй ответить без конспекта и отметь, где пришлось подсмотреть. Эту тему повтори первой, а завтра проверь себя ещё раз. Сколько дней осталось до экзамена?');
+  const days=words.match(/^(?:остал(?:ось|ся) |через |у меня )?(\d{1,2})(?: (?:день|дня|дней))?$/);
+  if(days && /Сколько дней осталось до экзамена\?$/.test(s.one("SELECT body FROM chats WHERE owner=? AND role='assistant' ORDER BY id DESC LIMIT 1",u.login)?.body||'')){
+   const n=Number(days[1]);
+   if(n<=1)return reply('Времени мало. Выбери две самые трудные темы, ответь на один вопрос по каждой вслух и проверь ошибки. Оставь время на сон.');
+   if(n===2)return reply('Сегодня разбери слабые темы и составь по каждой два вопроса. Завтра ответь на них по памяти, затем реши один билет с таймером.');
+   return reply('На первые '+(n-2)+' дн. распредели темы и каждый день проверяй себя по вчерашнему материалу. Предпоследний день посвяти пробному билету, последний — разбору ошибок и отдыху.');
+  }
   if (/^(покажи |какие |назови )?(мои |у меня )?группы[?!. ]*$/.test(query)) {
    const groups=u.role==='student'?[u.group_id]:[...new Set(lessons(u).map(l=>l.group_id))];
    return {answer:'Учебные группы: '+groups.join(', '),source:'database'};
@@ -56,7 +73,6 @@ export function createRoutes(s){
    return {answer:(subjects.length?'Начните с дисциплин: '+subjects.join(', ')+'. ':'')+'Уточните у преподавателя, какие работы можно пересдать и в какие сроки. Могу показать преподавателей или помочь написать личное сообщение.',actions:[{id:'agent-prompt',label:'Найти преподавателя',prompt:'Найди преподавателя'},{id:'agent-prompt',label:'Написать преподавателю',prompt:'Напиши преподавателю личное сообщение'}]};
   }
 
-  if(typeof message!=='string'||message.length>2000||!message.trim())return null;
   // General study questions often mention exams or grades without asking for a database lookup.
   if (/^(?:как (?:мне |лучше )?(?:подготовиться|выучить|запомнить)|объясни (?:мне )?(?:разницу|понятие|почему)|дай (?:мне )?(?:совет|рекомендац)|помоги (?:мне )?подготовиться)/iu.test(message.trim())) return null;
   const followUp = /^а?\s*(?:на )?(сегодня|завтра|\d{4}-\d{2}-\d{2})[?!. ]*$/iu.exec(message.trim());
