@@ -3,8 +3,9 @@
  const nativeFetch=window.fetch.bind(window);
  const key='nova-jury-db-v1',session='nova-jury-user';
  const ready=Promise.all([initSqlJs({locateFile:f=>new URL(f,base).href}),import(new URL('backend/routes.mjs',base)),import(new URL('backend/store.mjs',base)),nativeFetch(new URL('demo.sqlite',base)).then(r=>r.arrayBuffer())]);
+ let activeWorker;
  function respond(data,status=200){return Response.json(data,{status});}
- async function dispatch(url,options){
+ async function dispatch(url,options,completion){
   const [SQL,{createRoutes},{publicUser},seed]=await ready;
   const saved=localStorage.getItem(key);
   const db=new SQL.Database(saved?Uint8Array.from(atob(saved),c=>c.charCodeAt(0)):new Uint8Array(seed));
@@ -22,10 +23,17 @@
    if(path==='/api/logout'){sessionStorage.removeItem(session);return respond({ok:true});}
    if(path==='/api/session')return respond({user:user?publicUser(user):null});
    if(!user)return respond({error:'Выберите демоаккаунт.'},401);
-   if(path==='/api/llm/status')return respond({ready:false});
+   if(path==='/api/llm/status')return respond({ready:true,model:'Qwen2.5 · браузер'});
    let result;
    if(path==='/api/chat'&&method==='POST'){
-    result=routes.readAnswer(user,b.message)||{answer:'В браузерной версии доступны встроенные действия. Попробуйте «Покажи расписание» или «Что ты умеешь?». Свободный диалог с Ollama доступен в полной сборке.'};
+    if(completion && completion.owner!==user.login)return respond({error:'Сессия изменилась.'},401);
+    result=completion?{answer:completion.answer,source:'browser-model'}:routes.readAnswer(user,b.message);
+    if(!result){
+     const history=all('SELECT role,body FROM chats WHERE owner=? ORDER BY id DESC LIMIT 6',user.login).reverse();
+     return {owner:user.login,messages:[
+      {role:'system',content:'Ты NOVA, помощник университета. Отвечай по-русски кратко, учитывай диалог. Не выдумывай данные и не обещай выполненных действий. Доступный контекст: '+JSON.stringify(routes.context(user,b.message)).slice(0,2200)},
+      ...history.map(m=>({role:m.role,content:m.body.slice(0,550)})),{role:'user',content:b.message.slice(0,1600)}]};
+    }
     for(const [role,body] of [['user',b.message],['assistant',result.answer]])run('INSERT INTO chats(owner,role,body) VALUES(?,?,?)',user.login,role,body);
    }else if(path==='/api/chat')result={messages:all('SELECT role,body,created FROM chats WHERE owner=? ORDER BY id DESC LIMIT 40',user.login).reverse()};
    else result=routes.handle(method,path,user,b,url);
@@ -37,6 +45,26 @@
  window.fetch=(input,options={})=>{
   const url=new URL(input instanceof Request?input.url:input,location.href);
   if(url.origin!==location.origin||!url.pathname.startsWith('/api/'))return nativeFetch(input,options);
-  return navigator.locks?navigator.locks.request(key,()=>dispatch(url,options)):dispatch(url,options);
+  const locked = fn => navigator.locks ? navigator.locks.request(key,fn) : fn();
+  return locked(()=>dispatch(url,options)).then(async result=>{
+   if(result instanceof Response)return result;
+   const signal=options.signal;
+   signal?.throwIfAborted();
+   try {
+    const answer=await new Promise((resolve,reject)=>{
+     const worker=activeWorker || new Worker(new URL('model-worker.js',base),{type:'module'});
+     activeWorker=null;
+     const finish=(fn,value)=>{if(fn===reject || activeWorker){worker.terminate();}else{activeWorker=worker;}worker.onmessage=null;worker.onerror=null;signal?.removeEventListener('abort',cancel);fn(value);};
+     const cancel=()=>finish(reject,new DOMException('Отменено','AbortError'));
+     signal?.addEventListener('abort',cancel,{once:true});
+     const status=text=>{const el=document.querySelector('.nova-pending [role=status]');if(el){el.dataset.modelProgress="true";el.textContent=text;}};
+     status('Первый запуск: загрузка модели (512 МБ). Можно отменить.');
+     worker.onmessage=({data})=>{if(data.status)status(data.status);else if(data.error)finish(reject,Error(data.error));else finish(resolve,data.answer);};
+     worker.onerror=()=>finish(reject,Error('worker'));
+     worker.postMessage(result.messages);
+    });
+    return locked(()=>dispatch(url,options,{owner:result.owner,answer}));
+   } catch(e){if(signal?.aborted)throw e;return respond({error:'Не удалось запустить языковую модель. Проверьте доступ к Hugging Face и повторите запрос. Расписание и другие учебные действия доступны.'},503);}
+  });
  };
 })();

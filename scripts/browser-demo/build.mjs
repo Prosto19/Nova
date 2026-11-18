@@ -20,6 +20,7 @@ for(const file of readdirSync(out).filter(f=>/\.(html|css|js)$/.test(f))){
 }
 for(const f of ['sql-wasm.js','sql-wasm.wasm'])cpSync(join(vendor,'dist',f),join(out,f));
 cpSync(join(vendor,'LICENSE'),join(out,'sql-js-LICENSE.txt'));
+cpSync('scripts/browser-demo/model-worker.js',join(out,'model-worker.js'));
 cpSync('scripts/browser-demo/bridge.js',join(out,'bridge.js'));
 mkdirSync(join(out,'backend'),{recursive:true});
 for(const file of ['agent','dean','portal','role-agent','routes'])cpSync('backend/'+file+'.mjs',join(out,'backend',file+'.mjs'));
