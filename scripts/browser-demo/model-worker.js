@@ -1,19 +1,22 @@
-let generator, Streamer;
-self.onmessage = async ({data: messages}) => {
-  try {
-    if (!generator) {
+let loading, Streamer;
+async function loadModel() {
       const {pipeline, env, TextStreamer} = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2/dist/transformers.min.js');
       Streamer=TextStreamer;
       env.allowLocalModels = false;
       env.backends.onnx.wasm.numThreads = 1;
-      generator = await pipeline('text-generation', 'onnx-community/Qwen2.5-0.5B-Instruct', {
+      return pipeline('text-generation', 'onnx-community/Qwen2.5-0.5B-Instruct', {
         device: 'wasm', dtype: 'int8', revision: '22942cb7d7ba4cc81bb4673549ca4d4614469b5e',
         progress_callback(event) {
           if (event.status === 'progress' && event.file.endsWith('.onnx'))
             self.postMessage({status:'Загрузка модели · '+Math.min(100,Math.round(100*event.loaded/512096557))+' %'});
         }
       });
-    }
+}
+self.onmessage = async ({data: messages}) => {
+  const preload = messages?.type === 'preload';
+  try {
+    const generator = await (loading ??= loadModel());
+    if(preload){self.postMessage({ready:true});return;}
     self.postMessage({status:'NOVA формулирует ответ…'});
     let partial='';
     const streamer=new Streamer(generator.tokenizer,{skip_prompt:true,skip_special_tokens:true,callback_function(text){partial+=text;self.postMessage({status:partial});}});
@@ -22,5 +25,5 @@ self.onmessage = async ({data: messages}) => {
     const answer=Array.isArray(generated)?generated.at(-1)?.content:generated;
     if (typeof answer !== 'string' || !answer.trim()) throw Error('empty answer');
     self.postMessage({answer:answer.trim()});
-  } catch (error) { console.error('NOVA model:',error); self.postMessage({error:String(error.message)}); }
+  } catch (error) { console.error('NOVA model:',error); self.postMessage(preload?{preloadFailed:true}:{error:String(error.message)}); }
 };
