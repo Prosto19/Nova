@@ -150,7 +150,7 @@
   if(u.roleId!=='dean'){const home=w.querySelector('[data-home]'),homeIcon=home.querySelector('svg')?.cloneNode(true);home.textContent='Главная';if(homeIcon)home.prepend(homeIcon);const send=document.createElement('button');send.type='submit';send.className='role-chat-send';send.setAttribute('aria-label','Отправить запрос');send.textContent='➤';w.querySelector('[data-target=chat]').append(send);}
   const title=w.querySelector('header small');title.textContent=u.role+' · локальная база';
   const chatBox=document.createElement('div');chatBox.className='backend-chat';chatBox.setAttribute('aria-live','polite');w.querySelector('.workspace-feedback').after(chatBox);
-  const hint=document.createElement('p');hint.className='backend-model';hint.textContent='Проверяем локальную модель…';chatBox.before(hint);api('/api/llm/status').then(s=>hint.textContent=s.ready?`NOVA · ${s.model} · ${s.mode==='cpu'?'режим CPU':'работает на этом компьютере'}`:'Ollama ещё не готова. Ручные разделы доступны.').catch(e=>hint.textContent=e.message);
+  const hint=document.createElement('p');hint.className='backend-model';hint.textContent='Проверяем локальную модель…';chatBox.before(hint);api('/api/llm/status').then(s=>hint.textContent=s.display?s.display:s.ready?`NOVA · ${s.model} · ${s.mode==='cpu'?'режим CPU':'работает на этом компьютере'}`:'Ollama ещё не готова. Ручные разделы доступны.').catch(e=>hint.textContent=e.message);
  }
  let draft=null;
  function follow(root,force=false){if(force||root.scrollHeight-root.scrollTop-root.clientHeight<100)root.scrollTop=root.scrollHeight;}

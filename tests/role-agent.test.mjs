@@ -1,10 +1,18 @@
 import {test,after} from 'node:test';import assert from 'node:assert/strict';
+import {createRoutes} from '../backend/routes.mjs';
 import {mkdtemp,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
 const dir=await mkdtemp(join(tmpdir(),'nova-role-agent-'));process.env.NOVA_DATA_DIR=dir;
 const {server,store}=await import('../server.mjs');await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
 after(async()=>{await new Promise(r=>server.close(r));await rm(dir,{recursive:true,force:true});});
 async function call(path,cookie='',body){const r=await fetch(base+path,{method:body===undefined?'GET':'POST',headers:{Cookie:cookie,Origin:base,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,body:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};}
 const login=async name=>(await call('/api/login','',{login:name,password:'Nova2026!'})).cookie;
+test('conversation and study advice reach the language model in every workspace',()=>{
+ const routes=createRoutes(store);
+ for(const role of ['student','teacher','dean']){
+  for(const question of ['Расскажи о себе?','Привет!','Как тебя зовут?','Как подготовится к экзаменам?','Как лучше подготовиться к экзаменам?'])
+   assert.equal(routes.readAnswer({role},question),null,role+' '+question);
+ }
+});
 const ask=async(cookie,message)=>{const r=await call('/api/chat',cookie,{message});assert.equal(r.status,200,JSON.stringify(r.body));assert.ok(['workflow','database'].includes(r.body.source),message);return r.body;};
 test('student and teacher catalogs use scoped database actions and deny unavailable operations',async()=>{
  const student=await login('demo_student'),teacher=await login('demo_teacher');
