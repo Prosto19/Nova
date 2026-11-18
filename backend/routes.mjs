@@ -37,6 +37,25 @@ export function createRoutes(s){
   return result;
  }
  function readAnswer(u,message){
+  const query=message.toLowerCase().trim();
+  if (/^(покажи |какие |назови )?(мои |у меня )?группы[?!. ]*$/.test(query)) {
+   const groups=u.role==='student'?[u.group_id]:[...new Set(lessons(u).map(l=>l.group_id))];
+   return {answer:'Учебные группы: '+groups.join(', '),source:'database'};
+  }
+  if (/^(найди|покажи|кто).*(преподавател|препода)/.test(query)) {
+   const people=[...new Set(lessons(u).map(l=>l.teacher_name+' — '+l.subject))];
+   return {answer:people.length?'Преподаватели в вашем расписании:':'В вашем расписании пока нет преподавателей.',items:people.map(title=>({title,body:''})),source:'database'};
+  }
+  if (/математик/.test(query)&&/сегодня|завтра/.test(query)) {
+   const date=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Moscow'}).format(new Date(Date.now()+(query.includes('завтра')?86400000:0)));
+   const schedule=lessons(u).filter(l=>l.day===date&&/математик/i.test(l.subject));
+   return {answer:schedule.length?'Да, математика в расписании на '+date+':':'На '+date+' математики в вашем расписании нет.',schedule,source:'database'};
+  }
+  if(u.role==='student' && /как.*(исправ|поднять|улучш)/.test(query) && /оцен|успеваем|балл/i.test(s.one("SELECT body FROM chats WHERE owner=? AND role='assistant' ORDER BY id DESC LIMIT 1",u.login)?.body||'')){
+   const subjects=[...new Set(grades(u).filter(g=>g.value<=3).map(g=>g.subject))];
+   return {answer:(subjects.length?'Начните с дисциплин: '+subjects.join(', ')+'. ':'')+'Уточните у преподавателя, какие работы можно пересдать и в какие сроки. Могу показать преподавателей или помочь написать личное сообщение.',actions:[{id:'agent-prompt',label:'Найти преподавателя',prompt:'Найди преподавателя'},{id:'agent-prompt',label:'Написать преподавателю',prompt:'Напиши преподавателю личное сообщение'}]};
+  }
+
   if(typeof message!=='string'||message.length>2000||!message.trim())return null;
   // General study questions often mention exams or grades without asking for a database lookup.
   if (/^(?:как (?:мне |лучше )?(?:подготовиться|выучить|запомнить)|объясни (?:мне )?(?:разницу|понятие|почему)|дай (?:мне )?(?:совет|рекомендац)|помоги (?:мне )?подготовиться)/iu.test(message.trim())) return null;
