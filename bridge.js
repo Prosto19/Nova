@@ -4,6 +4,14 @@
  const key='nova-jury-db-v1',session='nova-jury-user';
  const ready=Promise.all([initSqlJs({locateFile:f=>new URL(f,base).href}),import(new URL('backend/routes.mjs',base)),import(new URL('backend/store.mjs',base)),nativeFetch(new URL('demo.sqlite',base)).then(r=>r.arrayBuffer())]);
  let activeWorker;
+ try {
+  const worker=new Worker(new URL('model-worker.js',base),{type:'module'});
+  activeWorker=worker;
+  const discard=()=>{if(activeWorker===worker){activeWorker=null;worker.terminate();}};
+  worker.onerror=discard;
+  worker.onmessage=({data})=>{if(data.preloadFailed)discard();};
+  worker.postMessage({type:'preload'});
+ } catch { /* A chat request can retry if startup was blocked. */ }
  function respond(data,status=200){return Response.json(data,{status});}
  async function dispatch(url,options,completion){
   const [SQL,{createRoutes},{publicUser},seed]=await ready;
@@ -68,8 +76,8 @@
      const cancel=()=>finish(reject,new DOMException('Отменено','AbortError'));
      signal?.addEventListener('abort',cancel,{once:true});
      const status=text=>{const el=document.querySelector('.nova-pending [role=status]');if(el){el.dataset.modelProgress="true";el.textContent=text;}};
-     status('Первый запуск: загрузка модели (512 МБ). Можно отменить.');
-     worker.onmessage=({data})=>{if(data.status)status(data.status);else if(data.error)finish(reject,Error(data.error));else finish(resolve,data.answer);};
+     status('NOVA готовит модель к ответу…');
+     worker.onmessage=({data})=>{if(data.status)status(data.status);else if(data.error)finish(reject,Error(data.error));else if(typeof data.answer==='string')finish(resolve,data.answer);};
      worker.onerror=()=>finish(reject,Error('worker'));
      worker.postMessage(result.messages);
     });
