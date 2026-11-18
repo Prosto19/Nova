@@ -1,10 +1,7 @@
-"""Offline generation: pip install torch numpy. Model is Silero v5 CIS Base (MIT)."""
-import pathlib, wave, json
-import torch
-root = pathlib.Path(__file__).resolve().parent.parent
-torch.set_num_threads(4)
-model = torch.package.PackageImporter(open(root/'.voice-cache/v5_cis_base_nostress.pt','rb')).load_pickle('tts_models','model')
-print(model.speakers, flush=True)
+from nova_voice import ROOT as root, load_voice, render
+import json
+
+model = load_voice()
 lines = [
  'Прив+ет! Я Н+ова, твой пом+ощник в университ+ете. Р+ада знак+омству! Дав+ай покаж+у, где найт+и с+амое в+ажное.',
  'Здесь м+ожно общ+аться со мной. Напиш+и свой вопр+ос, наприм+ер: как+ие п+ары у мен+я сег+одня?',
@@ -17,12 +14,5 @@ lines = [
 ]
 out=root/'public/audio'; out.mkdir(exist_ok=True)
 for i,text in enumerate(lines):
- audio=model.apply_tts(text=text,speaker='ru_ekaterina',sample_rate=24000)
- data=(audio.cpu().numpy().clip(-1,1)*32767).astype('<i2')
- with wave.open(str(out/f'tour-{i}.wav'),'wb') as f:
-  f.setnchannels(1); f.setsampwidth(2); f.setframerate(24000); f.writeframes(data.tobytes())
- print(i,round(len(data)/24000,2),flush=True)
- (out/'captions.json').write_text(json.dumps([x.replace('+','') for x in lines],ensure_ascii=False,indent=2),encoding='utf-8')
-
-
-
+ render(model,text,out/f'tour-{i}.wav')
+(out/'captions.json').write_text(json.dumps([x.replace('+','') for x in lines],ensure_ascii=False,indent=2),encoding='utf-8')
