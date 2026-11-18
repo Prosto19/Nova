@@ -4,14 +4,21 @@
  const key='nova-jury-db-v1',session='nova-jury-user';
  const ready=Promise.all([initSqlJs({locateFile:f=>new URL(f,base).href}),import(new URL('backend/routes.mjs',base)),import(new URL('backend/store.mjs',base)),nativeFetch(new URL('demo.sqlite',base)).then(r=>r.arrayBuffer())]);
  let activeWorker;
+ let modelStatus='Загрузка языковой модели…';
+ function showModelStatus(value){
+  if(value===modelStatus)return;
+  modelStatus=value;
+  const hint=document.querySelector('.backend-model');
+  if(hint)hint.textContent='NOVA · '+value;
+ }
  try {
   const worker=new Worker(new URL('model-worker.js',base),{type:'module'});
   activeWorker=worker;
-  const discard=()=>{if(activeWorker===worker){activeWorker=null;worker.terminate();}};
+  const discard=()=>{if(activeWorker===worker){activeWorker=null;worker.terminate();showModelStatus('Загрузка прервана. Повторю при вопросе.');}};
   worker.onerror=discard;
-  worker.onmessage=({data})=>{if(data.preloadFailed)discard();};
+  worker.onmessage=({data})=>{if(data.preloadFailed)discard();else if(data.ready)showModelStatus('Модель готова');else if(data.status)showModelStatus(data.status);};
   worker.postMessage({type:'preload'});
- } catch { /* A chat request can retry if startup was blocked. */ }
+ } catch { showModelStatus('Модель не загрузилась. Повторю при вопросе.'); }
  function respond(data,status=200){return Response.json(data,{status});}
  async function dispatch(url,options,completion){
   const [SQL,{createRoutes},{publicUser},seed]=await ready;
@@ -31,28 +38,38 @@
    if(path==='/api/logout'){sessionStorage.removeItem(session);return respond({ok:true});}
    if(path==='/api/session')return respond({user:user?publicUser(user):null});
    if(!user)return respond({error:'Выберите демоаккаунт.'},401);
-   if(path==='/api/llm/status')return respond({ready:true,model:'Qwen2.5 · браузер'});
+   if(path==='/api/llm/status')return respond({ready:modelStatus==='Модель готова',model:'Qwen2.5 · браузер',display:'NOVA · '+modelStatus});
    let result;
    if(path==='/api/chat'&&method==='POST'){
     if(completion && completion.owner!==user.login)return respond({error:'Сессия изменилась.'},401);
     if(typeof b.message!=='string'||!b.message.trim()||b.message.length>2000)return respond({error:'Введите вопрос длиной до 2000 символов.'},400);
-    const modelPrefix='Спросить модель: ';
-    const askModel=b.message.startsWith(modelPrefix);
-    result=completion?{answer:completion.answer,source:'browser-model'}:askModel?null:routes.readAnswer(user,b.message);
-    if(!result&&!askModel){
-     result={source:'workflow',answer:'У меня пока нет проверенного ответа на этот вопрос. Могу показать, с чем помогу в вашем кабинете. Если нужен свободный ответ, можно отдельно спросить языковую модель.',actions:[{id:'agent-prompt',label:'Мои возможности',prompt:'Что ты умеешь?'}]};
-     if(b.message.length+modelPrefix.length<=2000)result.actions.push({id:'agent-prompt',label:'Спросить модель',prompt:modelPrefix+b.message});
-    }
+    const question=b.message.replace(/^Спросить модель: /,'');
+    const candidate=completion?null:routes.readAnswer(user,question);
+    // For explanatory questions the model can use a tool result as context.
+    // Keep permission checks and explicit workflows on the validated path.
+    const explain=!candidate?.code && /^(?:расскажи|объясни|посоветуй|почему|зачем|как устроен|как работает|что такое|что ты умеешь|чем ты можешь помочь)/iu.test(question.trim());
+    result=completion?{...completion.evidence,answer:completion.answer,source:'browser-model'}:explain?null:candidate;
     if(!result){
-     const question=b.message.slice(modelPrefix.length);
-     const history=all('SELECT role,body FROM chats WHERE owner=? ORDER BY id DESC LIMIT 6',user.login).reverse();
-     if(history.at(-1)?.body.startsWith('У меня пока нет проверенного ответа')&&history.at(-2)?.body===question)history.splice(-2);
+     const history=all('SELECT role,body FROM chats WHERE owner=? ORDER BY id DESC LIMIT 8',user.login).reverse();
      if(history[0]?.role==='assistant')history.shift();
-     return {owner:user.login,messages:[
-      {role:'system',content:'Ты NOVA, помощник университета. Ответь на последний вопрос по-русски в двух-трёх предложениях. Если не знаешь, скажи об этом. Не обещай выполненных действий.'},
-      ...history.map(m=>({role:m.role,content:m.body.slice(0,550)})),{role:'user',content:question.slice(0,1600)}]};
+     const ctx=routes.context(user,question);
+     const role={student:'студента',teacher:'преподавателя',dean:'деканата'}[user.role];
+     const functions=ctx.capabilities.map(c=>c.name).join(', ');
+     const facts=Object.fromEntries(Object.entries(ctx).filter(([k])=>!['profile','note','capabilities'].includes(k)));
+     const personal=/\b\d{4}-\d{2}-\d{2}\b|мо[йяиеёю]|меня|наш|сегодня|завтра|ближайш/i.test(question);
+     const notes=candidate?JSON.stringify(candidate).slice(0,1400):personal&&Object.keys(facts).length?JSON.stringify(facts).slice(0,1400):'';
+     const instruction='Тебя зовут NOVA. Ты — ИИ-помощник цифрового деканата. Сейчас открыт кабинет '+role+'. Здесь доступны: '+functions+'. Разделы доступны в меню кабинета. Личные сообщения адресованы выбранному человеку, объявления публикуются в ленте. Отвечай на последний вопрос по-русски, коротко и по существу. На обычные вопросы отвечай своими словами. Учитывай предыдущие сообщения. Не выдумывай сведения о пользователе и не утверждай, что выполнила действие.'+(notes?' Сведения из кабинета: '+notes:'');
+     const evidence=candidate?Object.fromEntries(['items','schedule','actions'].filter(k=>Array.isArray(candidate[k])).map(k=>[k,candidate[k]])):{};
+     return {owner:user.login,evidence,messages:[
+      {role:'system',content:instruction},
+      ...history.map(m=>({role:m.role,content:m.body.slice(0,700)})),{role:'user',content:question.slice(0,2000)}]};
     }
-    for(const [role,body] of [['user',b.message],['assistant',result.answer]])run('INSERT INTO chats(owner,role,body) VALUES(?,?,?)',user.login,role,body);
+    const details=[
+     ...(result.schedule||[]).slice(0,6).map(l=>[l.day,l.start,l.subject,l.group_id,l.room].join(' · ')),
+     ...(result.items||[]).slice(0,6).map(item=>[item.title,item.body].filter(Boolean).join(' · '))
+    ];
+    const transcript=[result.answer,...details].join('\n');
+    for(const [role,body] of [['user',b.message],['assistant',transcript]])run('INSERT INTO chats(owner,role,body) VALUES(?,?,?)',user.login,role,body);
    }else if(path==='/api/chat')result={messages:all('SELECT role,body,created FROM chats WHERE owner=? ORDER BY id DESC LIMIT 40',user.login).reverse()};
    else result=routes.handle(method,path,user,b,url);
    if(result===undefined)return respond({error:'Раздел недоступен.'},404);
@@ -73,15 +90,19 @@
      const worker=activeWorker || new Worker(new URL('model-worker.js',base),{type:'module'});
      activeWorker=null;
      const finish=(fn,value)=>{if(fn===reject || activeWorker){worker.terminate();}else{activeWorker=worker;}worker.onmessage=null;worker.onerror=null;signal?.removeEventListener('abort',cancel);fn(value);};
-     const cancel=()=>finish(reject,new DOMException('Отменено','AbortError'));
+     const cancel=()=>{showModelStatus('Ожидание отменено. Модель запустится при следующем вопросе.');finish(reject,new DOMException('Отменено','AbortError'));};
      signal?.addEventListener('abort',cancel,{once:true});
      const status=text=>{const el=document.querySelector('.nova-pending [role=status]');if(el){el.dataset.modelProgress="true";el.textContent=text;}};
      status('NOVA готовит модель к ответу…');
-     worker.onmessage=({data})=>{if(data.status)status(data.status);else if(data.error)finish(reject,Error(data.error));else if(typeof data.answer==='string')finish(resolve,data.answer);};
-     worker.onerror=()=>finish(reject,Error('worker'));
+     worker.onmessage=({data})=>{
+      if(data.status){if(data.status.startsWith('Загрузка модели · '))showModelStatus(data.status);else if(data.status==='NOVA формулирует ответ…')showModelStatus('Модель готова');status(data.status);}
+      else if(data.error){showModelStatus('Модель недоступна. Можно повторить вопрос.');finish(reject,Error(data.error));}
+      else if(typeof data.answer==='string')finish(resolve,data.answer);
+     };
+     worker.onerror=()=>{showModelStatus('Модель недоступна. Можно повторить вопрос.');finish(reject,Error('worker'));};
      worker.postMessage(result.messages);
     });
-    return locked(()=>dispatch(url,options,{owner:result.owner,answer}));
+    return locked(()=>dispatch(url,options,{owner:result.owner,evidence:result.evidence,answer}));
    } catch(e){if(signal?.aborted)throw e;return respond({error:'Не удалось запустить языковую модель. Проверьте доступ к Hugging Face и повторите запрос. Расписание и другие учебные действия доступны.'},503);}
   });
  };
