@@ -17,7 +17,7 @@ foreach ($name in @('backend','public','server.mjs','package.json','README.md','
 }
 Copy-Item -LiteralPath (Join-Path $project 'scripts/Start-NOVA.cmd') -Destination $package
 Copy-Item -LiteralPath (Join-Path $project 'scripts/launch-portable.mjs') -Destination (Join-Path $package 'launch.mjs')
-Copy-Item -LiteralPath (Join-Path $project 'docs/JURY.md') -Destination (Join-Path $package 'GUIDE.txt')
+Copy-Item -LiteralPath (Join-Path $project 'docs/NOVA-guide.pdf') -Destination (Join-Path $package 'GUIDE.pdf')
 $release = New-Item -Type Directory -Force (Join-Path $project 'release')
 $output = Join-Path $release 'NOVA-Windows-x64.zip'
 Add-Type -AssemblyName System.IO.Compression.FileSystem

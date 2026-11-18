@@ -18,4 +18,4 @@ jobs:
       - name: Publish demo
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:GITHUB_REF_NAME release/NOVA-Windows-x64.zip --verify-tag --title "NOVA для жюри" --notes "Скачайте ZIP, распакуйте и откройте Start-NOVA.cmd. Краткий гид находится в GUIDE.txt."
+        run: gh release create $env:GITHUB_REF_NAME release/NOVA-Windows-x64.zip --verify-tag --title "NOVA для жюри" --notes "Скачайте ZIP, распакуйте и откройте Start-NOVA.cmd. Краткий гид находится в GUIDE.pdf."
