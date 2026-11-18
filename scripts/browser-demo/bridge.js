@@ -50,6 +50,11 @@
     const explain=!candidate?.code && /^(?:расскажи|объясни|посоветуй|почему|зачем|как устроен|как работает|что такое|что ты умеешь|чем ты можешь помочь)/iu.test(question.trim());
     result=completion?{...completion.evidence,answer:completion.answer,source:'browser-model'}:explain?null:candidate;
     if(!result){
+     if(/^(?:привет(?:ик)?|здравствуй(?:те)?|доброе утро|добрый (?:день|вечер))[!.?\s]*$/iu.test(question.trim()))
+      return {owner:user.login,messages:[
+       {role:'system',content:'Ты NOVA, помощник деканата. Ответь по-русски одним коротким предложением.'},
+       {role:'user',content:question}
+      ]};
      const history=all('SELECT role,body FROM chats WHERE owner=? ORDER BY id DESC LIMIT 8',user.login).reverse();
      if(history[0]?.role==='assistant')history.shift();
      const ctx=routes.context(user,question);

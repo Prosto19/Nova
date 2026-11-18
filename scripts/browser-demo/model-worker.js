@@ -27,7 +27,9 @@ async function loadModel() {
   self.document={baseURI:self.location.href};
   const {Wllama} = await import(engineBase + 'index.js');
   const model = new Wllama({'single-thread/wllama.wasm':engineBase+'single-thread/wllama.wasm'});
-  await model.loadModel([await modelFile()], {n_threads:1, n_ctx:4096, n_batch:128});
+  const file=await modelFile();
+  self.postMessage({status:'Запускаю модель на устройстве…'});
+  await model.loadModel([file], {n_threads:1, n_ctx:4096, n_batch:128});
   return model;
 }
 
