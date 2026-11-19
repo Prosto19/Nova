@@ -1,5 +1,5 @@
 const engineBase = 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.6/esm/';
-const weights = 'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf';
+const weights = 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/9217f5db79a29953eb74d5343926648285ec7e67/qwen2.5-0.5b-instruct-q4_k_m.gguf';
 let loading;
 
 async function modelFile() {
@@ -11,7 +11,7 @@ async function modelFile() {
   let loaded=0, previous=-1;
   const progress=new TransformStream({transform(chunk,controller){
     loaded+=chunk.byteLength;
-    const percent=Math.min(100,Math.floor(100*loaded/1117320736));
+    const percent=Math.min(100,Math.floor(100*loaded/491400032));
     if(percent!==previous){self.postMessage({status:'Загрузка модели · '+percent+' %'});previous=percent;}
     controller.enqueue(chunk);
   }});
@@ -46,7 +46,7 @@ self.onmessage = async ({data}) => {
       messages.splice(1,2);
     }
     const answer = await model.createChatCompletion(messages, {
-      nPredict:220, sampling:{temp:0.35,top_p:0.9}, useCache:true,
+      nPredict:110, sampling:{temp:0.35,top_p:0.9}, useCache:true,
       onNewToken(_token,_piece,text){self.postMessage({status:text});}
     });
     if (!answer.trim()) throw Error('Пустой ответ модели');
