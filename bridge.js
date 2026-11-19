@@ -63,7 +63,7 @@
      const facts=Object.fromEntries(Object.entries(ctx).filter(([k])=>!['profile','note','capabilities'].includes(k)));
      const personal=/\b\d{4}-\d{2}-\d{2}\b|мо[йяиеёю]|меня|наш|сегодня|завтра|ближайш/i.test(question);
      const notes=candidate?JSON.stringify(candidate).slice(0,1400):personal&&Object.keys(facts).length?JSON.stringify(facts).slice(0,1400):'';
-     const instruction='Тебя зовут NOVA. Ты — ИИ-помощник цифрового деканата. Сейчас открыт кабинет '+role+'. Здесь доступны: '+functions+'. Разделы доступны в меню кабинета. Личные сообщения адресованы выбранному человеку, объявления публикуются в ленте. Отвечай на последний вопрос по-русски, коротко и по существу. На обычные вопросы отвечай своими словами. Учитывай предыдущие сообщения. Не выдумывай сведения о пользователе и не утверждай, что выполнила действие.'+(notes?' Сведения из кабинета: '+notes:'');
+     const instruction='Ты NOVA, помощник деканата. Кабинет '+role+'. Отвечай кратко по-русски. Не придумывай данные или выполненные действия.'+(/сайт|умеешь|можешь|раздел|кабинет|вкладк|о себе/i.test(question)?' Возможности: '+functions:'')+(notes?' Данные: '+notes:'');
      const evidence=candidate?Object.fromEntries(['items','schedule','actions'].filter(k=>Array.isArray(candidate[k])).map(k=>[k,candidate[k]])):{};
      return {owner:user.login,evidence,messages:[
       {role:'system',content:instruction},
@@ -94,7 +94,7 @@
     const answer=await new Promise((resolve,reject)=>{
      const worker=activeWorker || new Worker(new URL('model-worker.js',base),{type:'module'});
      activeWorker=null;
-     let watchdog; const heartbeat=()=>{clearTimeout(watchdog);watchdog=setTimeout(()=>{showModelStatus("Модель не отвечает. Можно повторить вопрос.");finish(reject,Error("timeout"));},90000);};
+     let watchdog; const heartbeat=()=>{clearTimeout(watchdog);watchdog=setTimeout(()=>{showModelStatus("Модель не отвечает. Можно повторить вопрос.");finish(reject,Error("Движок не сообщил о прогрессе за 90 секунд."));},90000);};
      const finish=(fn,value)=>{clearTimeout(watchdog);if(fn===reject || activeWorker){worker.terminate();}else{activeWorker=worker;}worker.onmessage=null;worker.onerror=null;signal?.removeEventListener('abort',cancel);fn(value);};
      const cancel=()=>{showModelStatus('Ожидание отменено. Модель запустится при следующем вопросе.');finish(reject,new DOMException('Отменено','AbortError'));};
      signal?.addEventListener('abort',cancel,{once:true});
@@ -109,7 +109,7 @@
      heartbeat();worker.postMessage(result.messages);
     });
     return locked(()=>dispatch(url,options,{owner:result.owner,evidence:result.evidence,answer}));
-   } catch(e){if(signal?.aborted)throw e;return respond({error:'Не удалось запустить языковую модель. Проверьте доступ к Hugging Face и повторите запрос. Расписание и другие учебные действия доступны.'},503);}
+   } catch(e){if(signal?.aborted)throw e;return respond({error:'Не удалось завершить ответ. '+e.message+' Можно повторить запрос.'},503);}
   });
  };
 })();

@@ -1,24 +1,33 @@
-const engineBase = 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.6/esm/';
-const weights = 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/9217f5db79a29953eb74d5343926648285ec7e67/qwen2.5-0.5b-instruct-q4_k_m.gguf';
+const engineBase=new URL('./runtime/',self.location.href).href;
+const bytes=491400032, chunkSize=32*1024*1024;
 let loading;
 
-async function modelFile() {
-  const cache=await caches.open('nova-weights-v1').catch(()=>null);
-  const saved=await cache?.match(weights).catch(()=>null);
-  if(saved)return saved.blob();
-  const response=await fetch(weights);
-  if(!response.ok)throw Error('Не удалось загрузить модель: '+response.status);
-  let loaded=0, previous=-1;
-  const progress=new TransformStream({transform(chunk,controller){
-    loaded+=chunk.byteLength;
-    const percent=Math.min(100,Math.floor(100*loaded/491400032));
-    if(percent!==previous){self.postMessage({status:'Загрузка модели · '+percent+' %'});previous=percent;}
-    controller.enqueue(chunk);
-  }});
-  const blob=await new Response(response.body.pipeThrough(progress)).blob();
-  // The model can run from this blob even when persistent storage is full.
-  if(cache)void cache.put(weights,new Response(blob)).catch(()=>{});
-  return blob;
+async function modelFile(){
+  const cache=await self.caches?.open('nova-qwen-q4-9217f5d').catch(()=>null);
+  const parts=[];
+  let loaded=0;
+  for(let i=0;loaded<bytes;i++){
+    const url=engineBase+'q4-'+i+'.bin';
+    const expected=Math.min(chunkSize,bytes-loaded);
+    let blob=await (await cache?.match(url).catch(()=>null))?.blob();
+    if(blob?.size!==expected){
+      let failure;
+      for(let attempt=0;attempt<3;attempt++){
+        try{
+          const response=await fetch(url,{signal:AbortSignal.timeout(60000),cache:attempt?'reload':'default'});
+          if(!response.ok)throw Error('HTTP '+response.status);
+          blob=await response.blob();
+          if(blob.size!==expected)throw Error('неполный файл');
+          failure=null;break;
+        }catch(error){failure=error;}
+      }
+      if(failure)throw Error('Не удалось загрузить часть '+(i+1)+' модели: '+failure.message);
+      await cache?.put(url,new Response(blob)).catch(()=>{});
+    }
+    parts.push(blob);loaded+=blob.size;
+    self.postMessage({status:'Загрузка модели · '+Math.round(100*loaded/bytes)+' %'});
+  }
+  return new Blob(parts);
 }
 
 async function loadModel() {
