@@ -6,9 +6,10 @@ async function modelFile(){
   const cache=await self.caches?.open('nova-qwen-q4-9217f5d').catch(()=>null);
   const parts=[];
   let loaded=0;
-  for(let i=0;loaded<bytes;i++){
+  const count=Math.ceil(bytes/chunkSize);
+  async function loadPart(i){
     const url=engineBase+'q4-'+i+'.bin';
-    const expected=Math.min(chunkSize,bytes-loaded);
+    const expected=Math.min(chunkSize,bytes-i*chunkSize);
     let blob=await (await cache?.match(url).catch(()=>null))?.blob();
     if(blob?.size!==expected){
       let failure;
@@ -24,9 +25,12 @@ async function modelFile(){
       if(failure)throw Error('Не удалось загрузить часть '+(i+1)+' модели: '+failure.message);
       await cache?.put(url,new Response(blob)).catch(()=>{});
     }
-    parts.push(blob);loaded+=blob.size;
+    parts[i]=blob;loaded+=blob.size;
     self.postMessage({status:'Загрузка модели · '+Math.round(100*loaded/bytes)+' %'});
   }
+  let next=0;
+  async function consume(){while(next<count)await loadPart(next++);}
+  await Promise.all(Array.from({length:4},consume));
   return new Blob(parts);
 }
 
