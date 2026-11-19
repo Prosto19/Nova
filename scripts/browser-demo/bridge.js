@@ -94,18 +94,19 @@
     const answer=await new Promise((resolve,reject)=>{
      const worker=activeWorker || new Worker(new URL('model-worker.js',base),{type:'module'});
      activeWorker=null;
-     const finish=(fn,value)=>{if(fn===reject || activeWorker){worker.terminate();}else{activeWorker=worker;}worker.onmessage=null;worker.onerror=null;signal?.removeEventListener('abort',cancel);fn(value);};
+     let watchdog; const heartbeat=()=>{clearTimeout(watchdog);watchdog=setTimeout(()=>{showModelStatus("Модель не отвечает. Можно повторить вопрос.");finish(reject,Error("timeout"));},90000);};
+     const finish=(fn,value)=>{clearTimeout(watchdog);if(fn===reject || activeWorker){worker.terminate();}else{activeWorker=worker;}worker.onmessage=null;worker.onerror=null;signal?.removeEventListener('abort',cancel);fn(value);};
      const cancel=()=>{showModelStatus('Ожидание отменено. Модель запустится при следующем вопросе.');finish(reject,new DOMException('Отменено','AbortError'));};
      signal?.addEventListener('abort',cancel,{once:true});
      const status=text=>{const el=document.querySelector('.nova-pending [role=status]');if(el){el.dataset.modelProgress="true";el.textContent=text;}};
      status('NOVA готовит модель к ответу…');
      worker.onmessage=({data})=>{
-      if(data.status){if(data.status.startsWith('Загрузка модели · '))showModelStatus(data.status);else if(data.status==='NOVA формулирует ответ…')showModelStatus('Модель готова');status(data.status);}
+      heartbeat();if(data.status){if(data.status.startsWith('Загрузка модели · '))showModelStatus(data.status);else if(data.status==='NOVA формулирует ответ…')showModelStatus('Модель готова');status(data.status);}
       else if(data.error){showModelStatus('Модель недоступна. Можно повторить вопрос.');finish(reject,Error(data.error));}
       else if(typeof data.answer==='string')finish(resolve,data.answer);
      };
      worker.onerror=()=>{showModelStatus('Модель недоступна. Можно повторить вопрос.');finish(reject,Error('worker'));};
-     worker.postMessage(result.messages);
+     heartbeat();worker.postMessage(result.messages);
     });
     return locked(()=>dispatch(url,options,{owner:result.owner,evidence:result.evidence,answer}));
    } catch(e){if(signal?.aborted)throw e;return respond({error:'Не удалось запустить языковую модель. Проверьте доступ к Hugging Face и повторите запрос. Расписание и другие учебные действия доступны.'},503);}
